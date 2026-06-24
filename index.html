@@ -14,29 +14,29 @@ body {
   font-family: 'Segoe UI', system-ui, sans-serif;
 }
 
-/* OBS mode: transparent window, hide all UI chrome */
+/* OBS mode: transparent bg, hide all UI */
 body.obs-mode { background: transparent !important; }
 body.obs-mode #controls,
 body.obs-mode #settings,
 body.obs-mode #status  { display: none !important; }
 
-/* ─── Webcam video ──────────────────────────────────────────── */
-#video {
+/* ─── Hidden webcam (used only as MediaPipe input, never displayed) ── */
+#video { display: none; }
+
+/* ─── 2D face overlay: eye + mouth crops from webcam ─────────── */
+#face-canvas {
   position: fixed; inset: 0;
   width: 100%; height: 100%;
-  object-fit: cover;
-  /* mirrored by default – feels natural looking at yourself */
-  transform: scaleX(-1);
-  z-index: 0;
+  pointer-events: none;
+  z-index: 1;
 }
-body.obs-mode #video { display: none; }
 
 /* ─── Three.js canvas ───────────────────────────────────────── */
 #canvas {
   position: fixed; inset: 0;
   width: 100%; height: 100%;
-  pointer-events: none;   /* let clicks reach HTML elements beneath */
-  z-index: 1;
+  pointer-events: none;
+  z-index: 2;
 }
 
 /* ─── Top controls bar ──────────────────────────────────────── */
@@ -72,10 +72,10 @@ body.obs-mode #video { display: none; }
   position: fixed;
   top: 48px;
   right: 12px;
-  width: 264px;
+  width: 272px;
   max-height: calc(100vh - 60px);
   overflow-y: auto;
-  background: rgba(6,14,6,0.90);
+  background: rgba(6,14,6,0.92);
   border: 1px solid rgba(74,222,128,0.22);
   border-radius: 10px;
   padding: 10px 12px;
@@ -87,7 +87,6 @@ body.obs-mode #video { display: none; }
 }
 #settings.open { display: block; }
 
-/* scrollbar styling */
 #settings::-webkit-scrollbar { width: 4px; }
 #settings::-webkit-scrollbar-track { background: transparent; }
 #settings::-webkit-scrollbar-thumb { background: #2a5c2a; border-radius: 4px; }
@@ -114,7 +113,7 @@ body.obs-mode #video { display: none; }
   gap: 4px;
 }
 .s-label {
-  width: 100px;
+  width: 108px;
   flex-shrink: 0;
   color: #aaa;
   font-size: 11px;
@@ -134,7 +133,6 @@ body.obs-mode #video { display: none; }
   flex-shrink: 0;
 }
 
-/* Reset button inside settings */
 #btn-reset {
   display: block;
   width: 100%;
@@ -166,148 +164,163 @@ body.obs-mode #video { display: none; }
 </head>
 <body>
 
-<!-- ── Webcam feed (background) ─────────────────────────────── -->
+<!-- Webcam: hidden, used only by MediaPipe -->
 <video id="video" autoplay muted playsinline></video>
 
-<!-- ── Three.js render canvas ───────────────────────────────── -->
+<!-- 2D overlay: draws just the eye + mouth crops from webcam -->
+<canvas id="face-canvas"></canvas>
+
+<!-- Three.js pickle canvas -->
 <canvas id="canvas"></canvas>
 
-<!-- ── Top control buttons ──────────────────────────────────── -->
+<!-- ── Controls ───────────────────────────────────────────── -->
 <div id="controls">
-  <button class="btn" id="btn-obs"      title="Toggle transparent background for OBS">OBS Mode</button>
-  <button class="btn active" id="btn-mirror"  title="Mirror the webcam">Mirror</button>
-  <button class="btn" id="btn-settings" title="Open settings panel">⚙ Settings</button>
+  <button class="btn" id="btn-obs"      title="Toggle OBS transparent mode">OBS Mode</button>
+  <button class="btn active" id="btn-mirror" title="Mirror webcam">Mirror</button>
+  <button class="btn" id="btn-settings" title="Open settings">⚙ Settings</button>
 </div>
 
-<!-- ── Settings panel ───────────────────────────────────────── -->
+<!-- ── Settings ──────────────────────────────────────────── -->
 <div id="settings">
 
   <!-- PICKLE -->
   <div class="s-section">
     <h3>🥒 Pickle</h3>
     <div class="s-row"><span class="s-label">Size</span>
-      <input type="range" id="s-size"  min="0.3" max="3"    step="0.05" value="1.1">
+      <input type="range" id="s-size" min="0.3" max="3" step="0.05" value="1.1">
       <span class="s-val" id="v-size">1.10</span></div>
     <div class="s-row"><span class="s-label">X Offset</span>
-      <input type="range" id="s-px"    min="-2"  max="2"    step="0.02" value="0">
+      <input type="range" id="s-px" min="-2" max="2" step="0.02" value="0">
       <span class="s-val" id="v-px">0.00</span></div>
     <div class="s-row"><span class="s-label">Y Offset</span>
-      <input type="range" id="s-py"    min="-2"  max="2"    step="0.02" value="0">
+      <input type="range" id="s-py" min="-2" max="2" step="0.02" value="0">
       <span class="s-val" id="v-py">0.00</span></div>
     <div class="s-row"><span class="s-label">Z (depth)</span>
-      <input type="range" id="s-pz"    min="-3"  max="3"    step="0.1"  value="0">
+      <input type="range" id="s-pz" min="-3" max="3" step="0.1" value="0">
       <span class="s-val" id="v-pz">0.0</span></div>
   </div>
 
   <!-- EYES -->
   <div class="s-section">
     <h3>👁 Eyes</h3>
-    <div class="s-row"><span class="s-label">Radius (px)</span>
-      <input type="range" id="s-er"    min="5"   max="110"  step="1"    value="30">
-      <span class="s-val" id="v-er">30</span></div>
+    <div class="s-row"><span class="s-label">Scale</span>
+      <input type="range" id="s-es" min="0.4" max="2.5" step="0.05" value="1.2">
+      <span class="s-val" id="v-es">1.20</span></div>
     <div class="s-row"><span class="s-label">Both Y (px)</span>
-      <input type="range" id="s-eay"   min="-90" max="90"   step="1"    value="0">
+      <input type="range" id="s-eay" min="-90" max="90" step="1" value="0">
       <span class="s-val" id="v-eay">0</span></div>
     <div class="s-row"><span class="s-label">Left X (px)</span>
-      <input type="range" id="s-lex"   min="-90" max="90"   step="1"    value="0">
+      <input type="range" id="s-lex" min="-90" max="90" step="1" value="0">
       <span class="s-val" id="v-lex">0</span></div>
     <div class="s-row"><span class="s-label">Left Y (px)</span>
-      <input type="range" id="s-ley"   min="-90" max="90"   step="1"    value="0">
+      <input type="range" id="s-ley" min="-90" max="90" step="1" value="0">
       <span class="s-val" id="v-ley">0</span></div>
     <div class="s-row"><span class="s-label">Right X (px)</span>
-      <input type="range" id="s-rex"   min="-90" max="90"   step="1"    value="0">
+      <input type="range" id="s-rex" min="-90" max="90" step="1" value="0">
       <span class="s-val" id="v-rex">0</span></div>
     <div class="s-row"><span class="s-label">Right Y (px)</span>
-      <input type="range" id="s-rey"   min="-90" max="90"   step="1"    value="0">
+      <input type="range" id="s-rey" min="-90" max="90" step="1" value="0">
       <span class="s-val" id="v-rey">0</span></div>
   </div>
 
   <!-- MOUTH -->
   <div class="s-section">
     <h3>👄 Mouth</h3>
-    <div class="s-row"><span class="s-label">Radius (px)</span>
-      <input type="range" id="s-mr"    min="5"   max="140"  step="1"    value="38">
-      <span class="s-val" id="v-mr">38</span></div>
+    <div class="s-row"><span class="s-label">Scale</span>
+      <input type="range" id="s-ms" min="0.4" max="2.5" step="0.05" value="1.2">
+      <span class="s-val" id="v-ms">1.20</span></div>
     <div class="s-row"><span class="s-label">X Offset (px)</span>
-      <input type="range" id="s-mx"    min="-90" max="90"   step="1"    value="0">
+      <input type="range" id="s-mx" min="-90" max="90" step="1" value="0">
       <span class="s-val" id="v-mx">0</span></div>
     <div class="s-row"><span class="s-label">Y Offset (px)</span>
-      <input type="range" id="s-my"    min="-90" max="90"   step="1"    value="0">
+      <input type="range" id="s-my" min="-90" max="90" step="1" value="0">
       <span class="s-val" id="v-my">0</span></div>
   </div>
 
-  <!-- TRACKING -->
+  <!-- ROTATION / POSE -->
   <div class="s-section">
     <h3>🎯 Tracking</h3>
     <div class="s-row"><span class="s-label">Smoothing</span>
-      <input type="range" id="s-sm"    min="0"   max="0.97" step="0.01" value="0.55">
-      <span class="s-val" id="v-sm">0.55</span></div>
+      <input type="range" id="s-sm" min="0" max="0.97" step="0.01" value="0.60">
+      <span class="s-val" id="v-sm">0.60</span></div>
     <div class="s-row"><span class="s-label">Yaw scale</span>
-      <input type="range" id="s-ys"    min="0"   max="2.5"  step="0.05" value="1.0">
-      <span class="s-val" id="v-ys">1.00</span></div>
+      <input type="range" id="s-ys" min="0" max="2" step="0.05" value="0.45">
+      <span class="s-val" id="v-ys">0.45</span></div>
     <div class="s-row"><span class="s-label">Pitch scale</span>
-      <input type="range" id="s-ps"    min="0"   max="2.5"  step="0.05" value="0.75">
-      <span class="s-val" id="v-ps">0.75</span></div>
+      <input type="range" id="s-ps" min="0" max="2" step="0.05" value="0.35">
+      <span class="s-val" id="v-ps">0.35</span></div>
     <div class="s-row"><span class="s-label">Roll scale</span>
-      <input type="range" id="s-rs"    min="0"   max="2"    step="0.05" value="1.0">
-      <span class="s-val" id="v-rs">1.00</span></div>
+      <input type="range" id="s-rs" min="0" max="2" step="0.05" value="0.45">
+      <span class="s-val" id="v-rs">0.45</span></div>
+  </div>
+
+  <!-- BODY / NECK TWIST -->
+  <div class="s-section">
+    <h3>🔄 Neck Twist</h3>
+    <div class="s-row"><span class="s-label">Body rot %</span>
+      <input type="range" id="s-brf" min="0" max="1" step="0.05" value="0.25">
+      <span class="s-val" id="v-brf">0.25</span></div>
+    <div class="s-row"><span class="s-label">Twist falloff</span>
+      <input type="range" id="s-tfo" min="0.5" max="4" step="0.1" value="1.5">
+      <span class="s-val" id="v-tfo">1.50</span></div>
   </div>
 
   <button id="btn-reset">↺ Reset to defaults</button>
 </div>
 
-<!-- ── Status ─────────────────────────────────────────────────── -->
+<!-- ── Status ─────────────────────────────────────────────── -->
 <div id="status">⏳ Loading MediaPipe…</div>
 
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- Three.js r128                                              -->
-<!-- ═══════════════════════════════════════════════════════════ -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-
-<!-- MediaPipe Face Mesh (self-contained; no camera_utils needed) -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js"
         crossorigin="anonymous"></script>
 
 <script>
 "use strict";
 // ═══════════════════════════════════════════════════════════════════
-// DEFAULT CONFIG  (also the "reset" values)
+// CONFIG VERSION — bump when defaults or key names change so
+// stale localStorage values don't cause weirdness.
 // ═══════════════════════════════════════════════════════════════════
+const CONFIG_VERSION = 2;
+
 const DEFAULTS = {
-  pickleSize : 1.10,
-  pickleX    : 0.00,
-  pickleY    : 0.00,
-  pickleZ    : 0.00,
-  eyeRadius  : 30,
-  eyeAllY    : 0,
-  leftEyeX   : 0,
-  leftEyeY   : 0,
-  rightEyeX  : 0,
-  rightEyeY  : 0,
-  mouthRadius: 38,
-  mouthX     : 0,
-  mouthY     : 0,
-  smoothing  : 0.55,
-  yawScale   : 1.00,
-  pitchScale : 0.75,
-  rollScale  : 1.00,
-  mirror     : true,
+  _v          : CONFIG_VERSION,
+  pickleSize  : 1.10,
+  pickleX     : 0.00,
+  pickleY     : 0.00,
+  pickleZ     : 0.00,
+  eyeScale    : 1.20,    // multiplier on landmark-measured eye ellipse
+  eyeAllY     : 0,       // CSS px shift both eyes vertically
+  leftEyeX    : 0,       // CSS px fine-tune
+  leftEyeY    : 0,
+  rightEyeX   : 0,
+  rightEyeY   : 0,
+  mouthScale  : 1.20,    // multiplier on landmark-measured mouth ellipse
+  mouthX      : 0,
+  mouthY      : 0,
+  smoothing   : 0.60,
+  yawScale    : 0.45,
+  pitchScale  : 0.35,
+  rollScale   : 0.45,
+  bodyRotFraction: 0.25, // how much body rotates vs head (0=none, 1=same)
+  twistFalloff   : 1.50, // power curve on blend (>1 = more top-weighted)
+  mirror      : true,
 };
 
-// Live config — load from localStorage if available
+// Load saved config, discard if version mismatch
 const cfg = Object.assign({}, DEFAULTS);
 try {
   const saved = JSON.parse(localStorage.getItem('pickleConfig') || '{}');
-  Object.assign(cfg, saved);
+  if (saved._v === CONFIG_VERSION) Object.assign(cfg, saved);
 } catch(_) {}
 
 // ═══════════════════════════════════════════════════════════════════
-// THREE.JS RENDERER / SCENE / CAMERA
+// THREE.JS SETUP
 // ═══════════════════════════════════════════════════════════════════
 const threeCanvas = document.getElementById('canvas');
-const renderer   = new THREE.WebGLRenderer({ canvas: threeCanvas, alpha: true, antialias: true });
+const renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, alpha: true, antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
-renderer.setClearColor(0x000000, 0);          // fully transparent clear
+renderer.setClearColor(0x000000, 0);
 
 const scene  = new THREE.Scene();
 const FOV    = 45;
@@ -319,11 +332,12 @@ function onResize() {
   renderer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  // Also resize the 2D face canvas
+  faceCanvas.width  = w;
+  faceCanvas.height = h;
 }
 window.addEventListener('resize', onResize);
-onResize();
 
-// Utility: world-space extents at z=0 for the current camera
 function worldSize() {
   const halfFov = (FOV / 2) * (Math.PI / 180);
   const wh = 2 * Math.tan(halfFov) * camera.position.z;
@@ -331,67 +345,139 @@ function worldSize() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// PICKLE GEOMETRY  (LatheGeometry = one continuous mesh)
+// 2D FACE CANVAS  (eye + mouth crops from webcam)
+// ═══════════════════════════════════════════════════════════════════
+const faceCanvas = document.getElementById('face-canvas');
+const faceCtx    = faceCanvas.getContext('2d');
+
+// ═══════════════════════════════════════════════════════════════════
+// PICKLE GEOMETRY  — more cylindrical real-pickle profile
 // ═══════════════════════════════════════════════════════════════════
 function buildPickleGeometry() {
-  // Profile: [radius, y].  Y goes from -1 (bottom) to +1 (top).
-  // The shape is rotated around the Y axis → pickle silhouette from front.
-  const profile = [
-    [0.02, -1.000],
-    [0.09, -0.970],
-    [0.19, -0.910],
-    [0.30, -0.800],
-    [0.38, -0.640],
-    [0.43, -0.430],
-    [0.455,-0.190],
-    [0.460, 0.000],
-    [0.450, 0.200],
-    [0.430, 0.390],
-    [0.395, 0.560],
-    [0.340, 0.700],
-    [0.255, 0.820],
-    [0.150, 0.910],
-    [0.065, 0.965],
-    [0.018, 1.000],
+  // Profile: [radius, y], y from -1 (bottom) to +1 (top).
+  // Stays near-constant girth for most of the body, tapers to small nubs.
+  const pts = [
+    [0.012, -1.000],
+    [0.030, -0.985],
+    [0.075, -0.958],
+    [0.140, -0.922],
+    [0.215, -0.875],
+    [0.282, -0.818],
+    [0.330, -0.754],
+    [0.360, -0.685],
+    [0.376, -0.612],
+    [0.385, -0.530],
+    [0.390, -0.440],
+    [0.393, -0.330],
+    [0.394, -0.200],
+    [0.395, -0.065],   // max girth zone (fairly flat for ~70% of height)
+    [0.395,  0.000],
+    [0.395,  0.065],
+    [0.394,  0.180],
+    [0.392,  0.290],
+    [0.387,  0.390],
+    [0.378,  0.480],
+    [0.363,  0.560],
+    [0.342,  0.635],
+    [0.310,  0.705],
+    [0.266,  0.768],
+    [0.210,  0.825],
+    [0.148,  0.876],
+    [0.085,  0.922],
+    [0.038,  0.962],
+    [0.014,  0.988],
+    [0.010,  1.000],
   ].map(([r, y]) => new THREE.Vector2(r, y));
 
-  return new THREE.LatheGeometry(profile, 80);
+  return new THREE.LatheGeometry(pts, 96);
 }
 
-// ───────────────────────────────────────────────────────────────
-// GLSL shaders
-// ───────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+// SHADERS
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Vertex shader: per-vertex twist/morph ─────────────────────────
+// The bottom of the pickle (y≈-1) uses body rotation (bodyRotFraction
+// of the head rotation). The top (y≈+1) uses the full head rotation.
+// This creates a natural neck-twist effect with a single continuous mesh.
 const VERT = /* glsl */`
-  varying vec2  vUv;
-  varying vec3  vNormal;
-  varying vec3  vViewDir;
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+
+  // Head rotation (full)
+  uniform float uHeadYaw;
+  uniform float uHeadPitch;
+  uniform float uHeadRoll;
+
+  // Body rotation (fraction of head)
+  uniform float uBodyYaw;
+  uniform float uBodyPitch;
+
+  // Blend curve: t^uTwistFalloff so the twist is concentrated near the top
+  uniform float uTwistFalloff;
+
+  vec3 rotY(vec3 p, float a) {
+    float c = cos(a), s = sin(a);
+    return vec3(c*p.x + s*p.z, p.y, -s*p.x + c*p.z);
+  }
+  vec3 rotX(vec3 p, float a) {
+    float c = cos(a), s = sin(a);
+    return vec3(p.x, c*p.y - s*p.z, s*p.y + c*p.z);
+  }
+  vec3 rotZ(vec3 p, float a) {
+    float c = cos(a), s = sin(a);
+    return vec3(c*p.x - s*p.y, s*p.x + c*p.y, p.z);
+  }
 
   void main() {
-    vUv     = uv;
-    vNormal = normalize(normalMatrix * normal);
+    // Blend factor: 0 at bottom of pickle (y=-1), 1 at top (y=+1)
+    float t = clamp((position.y + 1.0) / 2.0, 0.0, 1.0);
+    t = pow(t, uTwistFalloff);   // >1 concentrates twist near the top
 
-    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+    float yaw   = mix(uBodyYaw,   uHeadYaw,   t);
+    float pitch = mix(uBodyPitch, uHeadPitch, t);
+    // Roll only on the head (upper portion), none on the body
+    float roll  = uHeadRoll * t;
+
+    // Apply rotations: yaw → pitch → roll
+    vec3 pos  = rotZ(rotX(rotY(position, yaw), pitch), roll);
+    vec3 norm = rotZ(rotX(rotY(normal,   yaw), pitch), roll);
+
+    // normalMatrix handles model→view normal transform;
+    // we pre-multiplied by our rotation R above which is orthogonal,
+    // so: viewNormal = normalMatrix * (R * objectNormal)  (correct)
+    vNormal  = normalize(normalMatrix * norm);
+    vUv      = uv;
+
+    vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
     vViewDir   = normalize(-mvPos.xyz);
-
     gl_Position = projectionMatrix * mvPos;
   }
 `;
 
+// ── Fragment shader: ellipse holes + real pickle texture ─────────
 const FRAG = /* glsl */`
   precision highp float;
 
-  // ── Hole positions in physical-pixel screen space ─────────────
+  // ── Eye / mouth hole ellipses (in device-pixel screen space) ───
   uniform vec2  uLeftEye;
+  uniform float uLeftEyeRX;
+  uniform float uLeftEyeRY;
+
   uniform vec2  uRightEye;
+  uniform float uRightEyeRX;
+  uniform float uRightEyeRY;
+
   uniform vec2  uMouth;
-  uniform float uLeftEyeR;
-  uniform float uRightEyeR;
-  uniform float uMouthR;
+  uniform float uMouthRX;
+  uniform float uMouthRY;
+
   uniform bool  uHolesOn;
 
-  varying vec2  vUv;
-  varying vec3  vNormal;
-  varying vec3  vViewDir;
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
 
   // ── Procedural noise ──────────────────────────────────────────
   float hash2(vec2 p) {
@@ -399,170 +485,270 @@ const FRAG = /* glsl */`
     p += dot(p, p + 17.5);
     return fract(p.x * p.y);
   }
-
-  float valueNoise(vec2 p) {
+  float vnoise(vec2 p) {
     vec2 i = floor(p);
     vec2 f = fract(p);
     f = f * f * (3.0 - 2.0 * f);
-    float a = hash2(i);
-    float b = hash2(i + vec2(1.0, 0.0));
-    float c = hash2(i + vec2(0.0, 1.0));
-    float d = hash2(i + vec2(1.0, 1.0));
-    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+    return mix(
+      mix(hash2(i), hash2(i+vec2(1,0)), f.x),
+      mix(hash2(i+vec2(0,1)), hash2(i+vec2(1,1)), f.x),
+      f.y);
+  }
+
+  // Ellipse point-in test (returns true = inside = should discard)
+  bool inEllipse(vec2 fc, vec2 centre, float rx, float ry) {
+    if (rx < 1.0 || ry < 1.0) return false;
+    vec2 d = fc - centre;
+    return (d.x*d.x)/(rx*rx) + (d.y*d.y)/(ry*ry) < 1.0;
   }
 
   void main() {
 
-    // ── Screen-space hole punch ─────────────────────────────────
+    // ── Hole punch ─────────────────────────────────────────────
     if (uHolesOn) {
       vec2 fc = gl_FragCoord.xy;
-      if (length(fc - uLeftEye)  < uLeftEyeR  ||
-          length(fc - uRightEye) < uRightEyeR ||
-          length(fc - uMouth)    < uMouthR) {
+      if (inEllipse(fc, uLeftEye,  uLeftEyeRX,  uLeftEyeRY)  ||
+          inEllipse(fc, uRightEye, uRightEyeRX, uRightEyeRY) ||
+          inEllipse(fc, uMouth,    uMouthRX,    uMouthRY)) {
         discard;
       }
     }
 
-    // ── Pickle surface texture ──────────────────────────────────
-    // layered noise for natural green variation
-    float n1 = valueNoise(vUv * 5.0);
-    float n2 = valueNoise(vUv * 13.0 + vec2(3.1, 1.7));
-    float n3 = valueNoise(vUv * 28.0 + vec2(6.3, 5.1));
-    float tex = n1 * 0.55 + n2 * 0.30 + n3 * 0.15;
+    // ── Pickle surface ─────────────────────────────────────────
+    // U = angle around (0..1), V = along length (0..1 bottom to top)
 
-    vec3 darkGreen  = vec3(0.09, 0.30, 0.08);
-    vec3 baseGreen  = vec3(0.17, 0.50, 0.14);
-    vec3 lightGreen = vec3(0.27, 0.62, 0.20);
+    // -- Lengthwise ridges (8 prominent ridges, like a real dill pickle)
+    float angle = vUv.x * 6.28318;
+    // 8-ridge cosine, shaped and noised
+    float ridgeBase = 0.5 + 0.5 * cos(angle * 8.0);
+    // add wobble along the length so ridges aren't perfectly straight
+    float ridgeWobble = vnoise(vec2(vUv.x * 8.0, vUv.y * 6.0 + 0.3)) * 0.25;
+    float ridge = clamp(ridgeBase - ridgeWobble + 0.10, 0.0, 1.0);
+    ridge = smoothstep(0.20, 0.80, ridge);  // sharpen ridge peaks
 
-    vec3 col = mix(darkGreen, lightGreen, tex);
+    // -- Base colour variation (broad patches of dark/light green)
+    float baseN = vnoise(vUv * vec2(2.5, 3.0) + vec2(1.1, 0.7));
+    float baseN2 = vnoise(vUv * vec2(5.0, 6.0) + vec2(3.3, 2.1)) * 0.5;
+    float baseVar = clamp(baseN * 0.7 + baseN2 * 0.3, 0.0, 1.0);
 
-    // wart bumps: darker craters with a tiny pale centre
-    float wart = smoothstep(0.70, 0.76, valueNoise(vUv * vec2(7.5, 5.5) + 1.3));
-    col = mix(col, darkGreen * 0.65, wart * 0.65);
-    float wartTop = smoothstep(0.785, 0.800, valueNoise(vUv * vec2(7.5, 5.5) + 1.3));
-    col = mix(col, lightGreen * 1.1, wartTop * 0.3);
+    // Real dill pickle colours
+    vec3 valleyDark = vec3(0.055, 0.165, 0.030);  // dark valley green
+    vec3 ridgeMid   = vec3(0.150, 0.355, 0.070);  // ridge green
+    vec3 ridgePeak  = vec3(0.220, 0.460, 0.095);  // bright ridge peak
+    vec3 yellowHint = vec3(0.240, 0.450, 0.080);  // slight yellow-green
 
-    // subtle vertical stripe darker lines (like a real pickle)
-    float stripe = smoothstep(0.48, 0.52, abs(fract(vUv.x * 16.0) - 0.5) * 2.0);
-    col = mix(col, col * 0.82, stripe * 0.25);
+    // Mix: valley→ridge based on ridge profile, then apply base variation
+    vec3 col = mix(valleyDark, ridgeMid, ridge);
+    col = mix(col, ridgePeak, ridge * ridge * 0.55);
+    col = mix(col, col * (0.82 + baseVar * 0.36), 0.5);
+    // Subtle yellow hint near ridge peaks
+    col = mix(col, yellowHint, ridge * 0.18);
+
+    // -- Wart bumps (dark crater with a pale tip, riding on ridges)
+    float wartN  = vnoise(vUv * vec2(9.0, 7.0) + vec2(5.5, 2.3));
+    float wartN2 = vnoise(vUv * vec2(18.0, 14.0) + vec2(1.2, 4.7)) * 0.35;
+    float wart   = smoothstep(0.66, 0.74, wartN + wartN2);
+    float wartTip= smoothstep(0.755, 0.775, wartN + wartN2);
+    col = mix(col, valleyDark * 0.55, wart * 0.55 * (0.3 + ridge * 0.7));
+    col = mix(col, ridgePeak * 1.15, wartTip * 0.35);
+
+    // -- Fine surface noise (micro-texture)
+    float micro = vnoise(vUv * 28.0 + vec2(6.3, 5.1));
+    col *= 0.92 + micro * 0.16;
+
+    // -- End-cap color darkening (the nubs get slightly darker)
+    float endDark = smoothstep(0.12, 0.0, vUv.y) + smoothstep(0.88, 1.0, vUv.y);
+    col = mix(col, col * 0.65, endDark * 0.55);
 
     // ── Phong lighting ──────────────────────────────────────────
     vec3 N = normalize(vNormal);
     vec3 V = normalize(vViewDir);
-    vec3 L = normalize(vec3(0.55, 1.0, 0.85));
+    vec3 L = normalize(vec3(0.45, 1.0, 0.90));   // key light direction
 
-    float diff = max(dot(N, L), 0.0);
-    float spec = pow(max(dot(reflect(-L, N), V), 0.0), 36.0) * 0.18;
-    // soft rim / subsurface-scatter hint
-    float rim  = pow(1.0 - max(dot(N, V), 0.0), 2.8) * 0.12;
+    float diff  = max(dot(N, L), 0.0);
+    float spec  = pow(max(dot(reflect(-L, N), V), 0.0), 48.0) * 0.14;
+    // Fill light from below-left
+    vec3  L2    = normalize(vec3(-0.3, -0.4, 0.7));
+    float diff2 = max(dot(N, L2), 0.0) * 0.12;
+    // Rim / SSS hint
+    float rim   = pow(1.0 - max(dot(N, V), 0.0), 3.0) * 0.10;
 
-    vec3 finalCol = col * (0.28 + diff * 0.72) + vec3(spec * 0.9, spec, spec * 0.6)
-                  + vec3(rim * 0.05, rim * 0.18, rim * 0.04);
+    vec3 lit = col * (0.22 + diff * 0.78 + diff2)
+             + vec3(spec * 0.85, spec, spec * 0.55)
+             + vec3(rim * 0.04, rim * 0.15, rim * 0.03);
 
-    gl_FragColor = vec4(finalCol, 1.0);
+    gl_FragColor = vec4(lit, 1.0);
   }
 `;
 
-// ── Shader uniforms (shared reference, updated every frame) ───────
+// ── Uniforms ──────────────────────────────────────────────────────
 const uniforms = {
-  uLeftEye  : { value: new THREE.Vector2() },
-  uRightEye : { value: new THREE.Vector2() },
-  uMouth    : { value: new THREE.Vector2() },
-  uLeftEyeR : { value: 30.0 },
-  uRightEyeR: { value: 30.0 },
-  uMouthR   : { value: 38.0 },
-  uHolesOn  : { value: false },
+  // Vertex — neck twist
+  uHeadYaw   : { value: 0 },
+  uHeadPitch : { value: 0 },
+  uHeadRoll  : { value: 0 },
+  uBodyYaw   : { value: 0 },
+  uBodyPitch : { value: 0 },
+  uTwistFalloff: { value: cfg.twistFalloff },
+
+  // Fragment — hole ellipses
+  uLeftEye   : { value: new THREE.Vector2() },
+  uLeftEyeRX : { value: 0 },
+  uLeftEyeRY : { value: 0 },
+  uRightEye  : { value: new THREE.Vector2() },
+  uRightEyeRX: { value: 0 },
+  uRightEyeRY: { value: 0 },
+  uMouth     : { value: new THREE.Vector2() },
+  uMouthRX   : { value: 0 },
+  uMouthRY   : { value: 0 },
+  uHolesOn   : { value: false },
 };
 
-const pickleMat  = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG,
-                                              uniforms, side: THREE.FrontSide });
+const pickleMat  = new THREE.ShaderMaterial({
+  vertexShader: VERT, fragmentShader: FRAG,
+  uniforms, side: THREE.FrontSide,
+});
 const pickleGeo  = buildPickleGeometry();
 const pickleMesh = new THREE.Mesh(pickleGeo, pickleMat);
 scene.add(pickleMesh);
 
 // ═══════════════════════════════════════════════════════════════════
-// FACE TRACKING  (MediaPipe FaceMesh)
+// LANDMARK INDICES
+// ═══════════════════════════════════════════════════════════════════
+const LM = {
+  noseTip       :   4,
+  forehead      :  10,
+  chin          : 152,
+  mouthTop      :  13,
+  mouthBot      :  14,
+  // Iris centres (require refineLandmarks: true)
+  leftIris      : 468,
+  rightIris     : 473,
+  // Fallback eye corners when iris unavailable
+  leftEyeOuter  :  33,
+  leftEyeInner  : 133,
+  rightEyeOuter : 263,
+  rightEyeInner : 362,
+};
+
+// Eye contour landmark indices for drawing the face canvas polygon
+// (subject's left eye — may appear on viewer's LEFT when mirrored)
+const LEFT_EYE_CONTOUR  = [33, 246, 161, 160, 159, 158, 157, 173,
+                            133, 155, 154, 153, 145, 144, 163, 7];
+// Subject's right eye
+const RIGHT_EYE_CONTOUR = [362, 398, 384, 385, 386, 387, 388, 466,
+                            263, 249, 390, 373, 374, 380, 381, 382];
+// Outer lip landmarks for the mouth
+const MOUTH_CONTOUR     = [61, 185, 40, 39, 37, 0, 267, 269, 270,
+                            409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146];
+
+// ═══════════════════════════════════════════════════════════════════
+// FACE TRACKING STATE
 // ═══════════════════════════════════════════════════════════════════
 const video    = document.getElementById('video');
 const statusEl = document.getElementById('status');
 
-// MediaPipe FaceMesh 478-landmark indices used by this app.
-// Iris indices (468, 473) require refineLandmarks: true.
-// Fallback eye-corner indices are used when iris points are absent.
-const LM = {
-  noseTip        :   4,
-  eyeMidL        : 168,   // glabella — stable horizontal reference
-  leftIris       : 468,   // subject's LEFT iris centre (refineLandmarks)
-  rightIris      : 473,   // subject's RIGHT iris centre (refineLandmarks)
-  forehead       :  10,
-  chin           : 152,
-  mouthTop       :  13,
-  mouthBot       :  14,
-  // Fallback eye-corner landmarks used when iris detection is unavailable:
-  leftEyeOuter   :  33,   // outer corner, subject's left eye
-  leftEyeInner   : 133,   // inner corner, subject's left eye
-  rightEyeOuter  : 263,   // outer corner, subject's right eye
-  rightEyeInner  : 362,   // inner corner, subject's right eye
-};
-
-// Smooth-tracking state
-const smooth = { x: null, y: null, scale: null, ry: 0, rx: 0, rz: 0 };
-
+const smooth   = { x: null, y: null, scale: null, ry: 0, rx: 0, rz: 0 };
 let faceVisible = false;
 let lastLm      = null;
 
-// ── Convert a normalised landmark to physical-pixel screen coords ──
-//   gl_FragCoord has (0,0) at bottom-left.
-function lmToScreen(lm, idx) {
-  const l  = lm[idx];
-  const w  = window.innerWidth, h = window.innerHeight;
-  const pr = renderer.getPixelRatio();
-  // When mirrored: flip X so the hole matches the flipped video display
-  const sx = (cfg.mirror ? 1 - l.x : l.x) * w;
-  const sy = l.y * h;
-  // Flip y for gl_FragCoord (0 = bottom)
-  return new THREE.Vector2(sx * pr, (h - sy) * pr);
+// ── Convert normalised landmark → CSS-pixel screen coord ─────────
+//   (mirroring applied here)
+function lmCss(lm, idx) {
+  const l = lm[idx];
+  const w = window.innerWidth, h = window.innerHeight;
+  return {
+    x: (cfg.mirror ? 1 - l.x : l.x) * w,
+    y: l.y * h,
+  };
 }
 
-// ── Head-pose estimation from landmarks ───────────────────────────
+// ── Compute bounding ellipse from a set of landmark indices ───────
+//   Returns { cx, cy, rx, ry } in CSS pixels.
+function ellipseFromLandmarks(lm, indices, scaleMult, offsetX, offsetY) {
+  const w = window.innerWidth, h = window.innerHeight;
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  let sumX = 0, sumY = 0;
+
+  for (const idx of indices) {
+    const l  = lm[idx];
+    const sx = (cfg.mirror ? 1 - l.x : l.x) * w;
+    const sy = l.y * h;
+    if (sx < minX) minX = sx;
+    if (sx > maxX) maxX = sx;
+    if (sy < minY) minY = sy;
+    if (sy > maxY) maxY = sy;
+    sumX += sx; sumY += sy;
+  }
+
+  const n  = indices.length;
+  const cx = (sumX / n) + (offsetX || 0);
+  const cy = (sumY / n) + (offsetY || 0);
+  const rx = (maxX - minX) / 2 * scaleMult;
+  const ry = (maxY - minY) / 2 * scaleMult;
+
+  return { cx, cy, rx, ry };
+}
+
+// ── Draw a video crop clipped to an ellipse on the face canvas ────
+function drawEllipseCrop(el) {
+  const w = faceCanvas.width, h = faceCanvas.height;
+
+  faceCtx.save();
+  faceCtx.beginPath();
+  faceCtx.ellipse(el.cx, el.cy, Math.max(el.rx, 1), Math.max(el.ry, 1),
+                  0, 0, Math.PI * 2);
+  faceCtx.clip();
+
+  if (cfg.mirror) {
+    faceCtx.translate(w, 0);
+    faceCtx.scale(-1, 1);
+  }
+  // Draw the full video frame; the clip path restricts it to the ellipse
+  faceCtx.drawImage(video, 0, 0, w, h);
+  faceCtx.restore();
+}
+
+// ── Head-pose estimation ──────────────────────────────────────────
 function headPose(lm) {
-  const leftIris  = lm[LM.leftIris]  || {
-    // Fallback: average of outer + inner corner of subject's left eye
+  const leftIris = lm[LM.leftIris] || {
     x: (lm[LM.leftEyeOuter].x  + lm[LM.leftEyeInner].x)  / 2,
     y: (lm[LM.leftEyeOuter].y  + lm[LM.leftEyeInner].y)  / 2,
   };
   const rightIris = lm[LM.rightIris] || {
-    // Fallback: average of outer + inner corner of subject's right eye
     x: (lm[LM.rightEyeOuter].x + lm[LM.rightEyeInner].x) / 2,
     y: (lm[LM.rightEyeOuter].y + lm[LM.rightEyeInner].y) / 2,
   };
-  const nose      = lm[LM.noseTip];
-  const forehead  = lm[LM.forehead];
-  const chin      = lm[LM.chin];
+  const nose     = lm[LM.noseTip];
+  const forehead = lm[LM.forehead];
+  const chin     = lm[LM.chin];
 
-  const eyeMidX   = (leftIris.x + rightIris.x) / 2;
-  const eyeMidY   = (leftIris.y + rightIris.y) / 2;
-  const eyeSpan   = Math.abs(rightIris.x - leftIris.x) || 0.001;
-  const faceH     = Math.abs(chin.y - forehead.y)      || 0.001;
+  const eyeMidX = (leftIris.x + rightIris.x) / 2;
+  const eyeMidY = (leftIris.y + rightIris.y) / 2;
+  const eyeSpan = Math.abs(rightIris.x - leftIris.x) || 0.001;
+  const faceH   = Math.abs(chin.y - forehead.y)      || 0.001;
 
-  // Yaw: lateral nose offset, normalised by half-eye-span → ~[-1, 1] at ±45°
-  // Flip when mirrored so the pickle turns the same way the face appears to turn.
-  const rawYaw   = (nose.x - eyeMidX) / (eyeSpan / 2) * (Math.PI / 2.2);
-  const yaw      = rawYaw * (cfg.mirror ? -1 : 1) * cfg.yawScale;
+  // Yaw: nose displacement from eye midpoint, normalised by half eye-span
+  // Clamp to avoid extreme values; stage turn never exceeds ~80°
+  const rawYaw  = (nose.x - eyeMidX) / (eyeSpan / 2) * (Math.PI / 2.5);
+  const yaw     = THREE.MathUtils.clamp(rawYaw, -Math.PI * 0.9, Math.PI * 0.9)
+                  * (cfg.mirror ? -1 : 1) * cfg.yawScale;
 
-  // Pitch: vertical nose offset from the midpoint between eyes and chin
-  const midY     = eyeMidY + faceH * 0.08;
-  const rawPitch = -(nose.y - midY) / (faceH * 0.28) * (Math.PI / 2.8);
-  const pitch    = rawPitch * cfg.pitchScale;
+  // Pitch: nose below/above eye midline
+  const midY    = eyeMidY + faceH * 0.06;
+  const rawPitch = -(nose.y - midY) / (faceH * 0.30) * (Math.PI / 3.0);
+  const pitch    = THREE.MathUtils.clamp(rawPitch, -Math.PI / 2, Math.PI / 2)
+                   * cfg.pitchScale;
 
-  // Roll: tilt of the eye line
-  const rawRoll  = Math.atan2(rightIris.y - leftIris.y, rightIris.x - leftIris.x);
-  const roll     = rawRoll * (cfg.mirror ? -1 : 1) * cfg.rollScale;
+  // Roll: eye-line tilt
+  const rawRoll = Math.atan2(rightIris.y - leftIris.y, rightIris.x - leftIris.x);
+  const roll    = rawRoll * (cfg.mirror ? -1 : 1) * cfg.rollScale;
 
   return { yaw, pitch, roll };
 }
 
-// ── Face centre (normalised 0-1) ───────────────────────────────────
+// ── Face centre + height ──────────────────────────────────────────
 function faceCenter(lm) {
   const li  = lm[LM.leftIris]  || lm[LM.leftEyeOuter];
   const ri  = lm[LM.rightIris] || lm[LM.rightEyeOuter];
@@ -573,20 +759,20 @@ function faceCenter(lm) {
     y: (top.y + bot.y) / 2,
   };
 }
-
-// ── Face height (normalised) ───────────────────────────────────────
 function faceHeight(lm) {
   return Math.abs(lm[LM.chin].y - lm[LM.forehead].y) || 0.1;
 }
 
-// ── MediaPipe FaceMesh setup ───────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+// MEDIAPIPE FACE MESH
+// ═══════════════════════════════════════════════════════════════════
 const faceMesh = new FaceMesh({
   locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${f}`,
 });
 
 faceMesh.setOptions({
-  maxNumFaces    : 1,
-  refineLandmarks: true,         // gives us iris landmarks (468, 473)
+  maxNumFaces         : 1,
+  refineLandmarks     : true,
   minDetectionConfidence: 0.5,
   minTrackingConfidence : 0.5,
 });
@@ -600,11 +786,11 @@ faceMesh.onResults(results => {
   } else {
     faceVisible = false;
     uniforms.uHolesOn.value = false;
+    faceCtx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
     statusEl.textContent = '👁 Searching…';
   }
 });
 
-// ── Start webcam ───────────────────────────────────────────────────
 async function startCamera() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -613,11 +799,10 @@ async function startCamera() {
     video.srcObject = stream;
     await new Promise(r => { video.onloadedmetadata = r; });
     video.play();
-
     statusEl.textContent = '👁 Searching…';
 
-    // Feed frames into MediaPipe.  Cap at ~30 fps to avoid overloading the model.
-    const MP_FRAME_INTERVAL_MS = 33;   // ≈30 fps
+    // Feed frames to MediaPipe, capped at ~30 fps
+    const MP_FRAME_INTERVAL_MS = 33;
     let lastSend = 0;
     async function sendFrame(ts) {
       if (video.readyState >= 2 && ts - lastSend > MP_FRAME_INTERVAL_MS) {
@@ -627,18 +812,14 @@ async function startCamera() {
       requestAnimationFrame(sendFrame);
     }
     requestAnimationFrame(sendFrame);
-
   } catch (err) {
     statusEl.textContent = `❌ Camera: ${err.message}`;
   }
 }
 
-faceMesh.initialize().then(() => {
-  statusEl.textContent = '📷 Requesting camera…';
-  startCamera();
-}).catch(err => {
-  statusEl.textContent = `❌ MediaPipe: ${err.message}`;
-});
+faceMesh.initialize()
+  .then(() => { statusEl.textContent = '📷 Requesting camera…'; startCamera(); })
+  .catch(err  => { statusEl.textContent = `❌ MediaPipe: ${err.message}`; });
 
 // ═══════════════════════════════════════════════════════════════════
 // ANIMATION LOOP
@@ -654,98 +835,108 @@ function animate() {
     const fc   = faceCenter(lm);
     const fh   = faceHeight(lm);
 
-    // Target world position of pickle centre
     const mirX  = cfg.mirror ? 1 - fc.x : fc.x;
     const tarX  = (mirX  - 0.5) * ws.w + cfg.pickleX;
     const tarY  = -(fc.y - 0.5) * ws.h + cfg.pickleY;
-    // Pickle height in world units: profile spans -1..+1 → 2 units
     const tarSc = (fh * ws.h / 2) * cfg.pickleSize;
 
-    // Initialise on first detection to avoid teleport
+    // Initialise smooth state to avoid first-frame teleport
     if (smooth.x === null) {
       smooth.x = tarX; smooth.y = tarY; smooth.scale = tarSc;
       smooth.ry = pose.yaw; smooth.rx = pose.pitch; smooth.rz = pose.roll;
     }
 
-    smooth.x     += (tarX     - smooth.x)     * (1 - s);
-    smooth.y     += (tarY     - smooth.y)     * (1 - s);
-    smooth.scale += (tarSc    - smooth.scale) * (1 - s);
-    smooth.ry    += (pose.yaw   - smooth.ry)  * (1 - s);
-    smooth.rx    += (pose.pitch - smooth.rx)  * (1 - s);
-    smooth.rz    += (pose.roll  - smooth.rz)  * (1 - s);
+    const lf = 1 - s;
+    smooth.x     += (tarX      - smooth.x)     * lf;
+    smooth.y     += (tarY      - smooth.y)     * lf;
+    smooth.scale += (tarSc     - smooth.scale) * lf;
+    smooth.ry    += (pose.yaw  - smooth.ry)    * lf;
+    smooth.rx    += (pose.pitch- smooth.rx)    * lf;
+    smooth.rz    += (pose.roll - smooth.rz)    * lf;
 
+    // Position the pickle; rotation is handled entirely by vertex shader
     pickleMesh.position.set(smooth.x, smooth.y, cfg.pickleZ);
     pickleMesh.scale.setScalar(smooth.scale);
-    pickleMesh.rotation.set(smooth.rx, smooth.ry, smooth.rz);
+    pickleMesh.rotation.set(0, 0, 0);   // vertex shader owns rotation
 
-    // ── Update eye/mouth hole uniforms ──────────────────────────
+    // Update twist uniforms
+    uniforms.uHeadYaw.value    = smooth.ry;
+    uniforms.uHeadPitch.value  = smooth.rx;
+    uniforms.uHeadRoll.value   = smooth.rz;
+    uniforms.uBodyYaw.value    = smooth.ry * cfg.bodyRotFraction;
+    uniforms.uBodyPitch.value  = smooth.rx * cfg.bodyRotFraction;
+    uniforms.uTwistFalloff.value = cfg.twistFalloff;
+
+    // ── Compute ellipses from landmarks ─────────────────────────
     const pr = renderer.getPixelRatio();
     const h  = window.innerHeight;
 
-    // left/right from VIEWER perspective in mirrored mode:
-    //   lm[468] = subject's left iris → appears on viewer's LEFT when mirrored
-    //   lm[473] = subject's right iris → appears on viewer's RIGHT when mirrored
-    const leS = lmToScreen(lm, LM.leftIris);
-    const reS = lmToScreen(lm, LM.rightIris);
-    const mtS = lmToScreen(lm, LM.mouthTop);
-    const mbS = lmToScreen(lm, LM.mouthBot);
-    const mS  = new THREE.Vector2((mtS.x + mbS.x) / 2, (mtS.y + mbS.y) / 2);
+    const leEl = ellipseFromLandmarks(lm, LEFT_EYE_CONTOUR,  cfg.eyeScale,
+                                      cfg.leftEyeX  + 0, cfg.eyeAllY + cfg.leftEyeY);
+    const reEl = ellipseFromLandmarks(lm, RIGHT_EYE_CONTOUR, cfg.eyeScale,
+                                      cfg.rightEyeX + 0, cfg.eyeAllY + cfg.rightEyeY);
+    const mEl  = ellipseFromLandmarks(lm, MOUTH_CONTOUR,     cfg.mouthScale,
+                                      cfg.mouthX, cfg.mouthY);
 
-    uniforms.uLeftEye.value.set(
-      leS.x + cfg.leftEyeX  * pr,
-      leS.y + (cfg.eyeAllY + cfg.leftEyeY)  * pr,
-    );
-    uniforms.uRightEye.value.set(
-      reS.x + cfg.rightEyeX * pr,
-      reS.y + (cfg.eyeAllY + cfg.rightEyeY) * pr,
-    );
-    uniforms.uMouth.value.set(
-      mS.x + cfg.mouthX * pr,
-      mS.y + cfg.mouthY * pr,
-    );
-    uniforms.uLeftEyeR.value  = cfg.eyeRadius * pr;
-    uniforms.uRightEyeR.value = cfg.eyeRadius * pr;
-    uniforms.uMouthR.value    = cfg.mouthRadius * pr;
+    // Update shader uniforms (device pixels; Y flipped for gl_FragCoord)
+    uniforms.uLeftEye.value.set(leEl.cx * pr, (h - leEl.cy) * pr);
+    uniforms.uLeftEyeRX.value  = leEl.rx * pr;
+    uniforms.uLeftEyeRY.value  = leEl.ry * pr;
+
+    uniforms.uRightEye.value.set(reEl.cx * pr, (h - reEl.cy) * pr);
+    uniforms.uRightEyeRX.value = reEl.rx * pr;
+    uniforms.uRightEyeRY.value = reEl.ry * pr;
+
+    uniforms.uMouth.value.set(mEl.cx * pr, (h - mEl.cy) * pr);
+    uniforms.uMouthRX.value    = mEl.rx * pr;
+    uniforms.uMouthRY.value    = mEl.ry * pr;
+
+    // ── Draw eye + mouth crops on the 2D face canvas ────────────
+    faceCtx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
+    drawEllipseCrop(leEl);
+    drawEllipseCrop(reEl);
+    drawEllipseCrop(mEl);
   }
 
   renderer.render(scene, camera);
 }
 animate();
 
+// Call onResize once now that everything is initialised
+onResize();
+
 // ═══════════════════════════════════════════════════════════════════
-// SETTINGS PANEL  — slider bindings
+// SETTINGS PANEL
 // ═══════════════════════════════════════════════════════════════════
 const sliders = [
-  // [input-id, value-id, cfg-key, decimals]
-  ['s-size', 'v-size', 'pickleSize', 2],
-  ['s-px',   'v-px',   'pickleX',    2],
-  ['s-py',   'v-py',   'pickleY',    2],
-  ['s-pz',   'v-pz',   'pickleZ',    1],
-  ['s-er',   'v-er',   'eyeRadius',  0],
-  ['s-eay',  'v-eay',  'eyeAllY',    0],
-  ['s-lex',  'v-lex',  'leftEyeX',   0],
-  ['s-ley',  'v-ley',  'leftEyeY',   0],
-  ['s-rex',  'v-rex',  'rightEyeX',  0],
-  ['s-rey',  'v-rey',  'rightEyeY',  0],
-  ['s-mr',   'v-mr',   'mouthRadius',0],
-  ['s-mx',   'v-mx',   'mouthX',     0],
-  ['s-my',   'v-my',   'mouthY',     0],
-  ['s-sm',   'v-sm',   'smoothing',  2],
-  ['s-ys',   'v-ys',   'yawScale',   2],
-  ['s-ps',   'v-ps',   'pitchScale', 2],
-  ['s-rs',   'v-rs',   'rollScale',  2],
+  // [slider-id, value-id, cfg-key, decimals]
+  ['s-size', 'v-size', 'pickleSize',       2],
+  ['s-px',   'v-px',   'pickleX',           2],
+  ['s-py',   'v-py',   'pickleY',           2],
+  ['s-pz',   'v-pz',   'pickleZ',           1],
+  ['s-es',   'v-es',   'eyeScale',          2],
+  ['s-eay',  'v-eay',  'eyeAllY',           0],
+  ['s-lex',  'v-lex',  'leftEyeX',          0],
+  ['s-ley',  'v-ley',  'leftEyeY',          0],
+  ['s-rex',  'v-rex',  'rightEyeX',         0],
+  ['s-rey',  'v-rey',  'rightEyeY',         0],
+  ['s-ms',   'v-ms',   'mouthScale',        2],
+  ['s-mx',   'v-mx',   'mouthX',            0],
+  ['s-my',   'v-my',   'mouthY',            0],
+  ['s-sm',   'v-sm',   'smoothing',         2],
+  ['s-ys',   'v-ys',   'yawScale',          2],
+  ['s-ps',   'v-ps',   'pitchScale',        2],
+  ['s-rs',   'v-rs',   'rollScale',         2],
+  ['s-brf',  'v-brf',  'bodyRotFraction',   2],
+  ['s-tfo',  'v-tfo',  'twistFalloff',      2],
 ];
 
-function applySliderValue(cfgKey, rawVal, decimals) {
-  cfg[cfgKey] = decimals > 0 ? parseFloat(rawVal) : parseInt(rawVal, 10);
-}
-
-function syncSliderUI(sid, vid, cfgKey, decimals) {
+function syncSliderUI(sid, vid, cfgKey, dec) {
   const el  = document.getElementById(sid);
   const vel = document.getElementById(vid);
-  if (!el) return;
-  el.value   = cfg[cfgKey];
-  vel.textContent = Number(cfg[cfgKey]).toFixed(decimals);
+  if (!el || !vel) return;
+  el.value = cfg[cfgKey];
+  vel.textContent = Number(cfg[cfgKey]).toFixed(dec);
 }
 
 sliders.forEach(([sid, vid, key, dec]) => {
@@ -753,7 +944,8 @@ sliders.forEach(([sid, vid, key, dec]) => {
   if (!el) return;
   syncSliderUI(sid, vid, key, dec);
   el.addEventListener('input', () => {
-    applySliderValue(key, el.value, dec);
+    const raw = el.value;
+    cfg[key] = dec > 0 ? parseFloat(raw) : parseInt(raw, 10);
     document.getElementById(vid).textContent = Number(cfg[key]).toFixed(dec);
     saveConfig();
   });
@@ -763,7 +955,6 @@ function saveConfig() {
   try { localStorage.setItem('pickleConfig', JSON.stringify(cfg)); } catch(_) {}
 }
 
-// Reset button
 document.getElementById('btn-reset').addEventListener('click', () => {
   Object.assign(cfg, DEFAULTS);
   sliders.forEach(([sid, vid, key, dec]) => syncSliderUI(sid, vid, key, dec));
@@ -784,20 +975,16 @@ document.getElementById('btn-settings').addEventListener('click', () => {
 });
 
 const mirrorBtn = document.getElementById('btn-mirror');
-// Sync initial mirror state with CSS / button
 (function initMirror() {
-  video.style.transform = cfg.mirror ? 'scaleX(-1)' : 'none';
   mirrorBtn.classList.toggle('active', cfg.mirror);
 })();
 
 mirrorBtn.addEventListener('click', () => {
   cfg.mirror = !cfg.mirror;
-  video.style.transform = cfg.mirror ? 'scaleX(-1)' : 'none';
   mirrorBtn.classList.toggle('active', cfg.mirror);
   saveConfig();
 });
 
-// ── Keyboard shortcuts ─────────────────────────────────────────────
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
   if (e.key === 's' || e.key === 'S') document.getElementById('btn-settings').click();
