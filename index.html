@@ -206,21 +206,21 @@ body.obs-mode #status  { display: none !important; }
     <div class="s-row"><span class="s-label">Scale</span>
       <input type="range" id="s-es" min="0.4" max="2.5" step="0.05" value="1.2">
       <span class="s-val" id="v-es">1.20</span></div>
-    <div class="s-row"><span class="s-label">Both Y (px)</span>
-      <input type="range" id="s-eay" min="-90" max="90" step="1" value="0">
-      <span class="s-val" id="v-eay">0</span></div>
-    <div class="s-row"><span class="s-label">Left X (px)</span>
-      <input type="range" id="s-lex" min="-90" max="90" step="1" value="0">
-      <span class="s-val" id="v-lex">0</span></div>
-    <div class="s-row"><span class="s-label">Left Y (px)</span>
-      <input type="range" id="s-ley" min="-90" max="90" step="1" value="0">
-      <span class="s-val" id="v-ley">0</span></div>
-    <div class="s-row"><span class="s-label">Right X (px)</span>
-      <input type="range" id="s-rex" min="-90" max="90" step="1" value="0">
-      <span class="s-val" id="v-rex">0</span></div>
-    <div class="s-row"><span class="s-label">Right Y (px)</span>
-      <input type="range" id="s-rey" min="-90" max="90" step="1" value="0">
-      <span class="s-val" id="v-rey">0</span></div>
+    <div class="s-row"><span class="s-label">Both Y</span>
+      <input type="range" id="s-eay" min="-2" max="2" step="0.05" value="0">
+      <span class="s-val" id="v-eay">0.00</span></div>
+    <div class="s-row"><span class="s-label">Left X</span>
+      <input type="range" id="s-lex" min="-2" max="2" step="0.05" value="0">
+      <span class="s-val" id="v-lex">0.00</span></div>
+    <div class="s-row"><span class="s-label">Left Y</span>
+      <input type="range" id="s-ley" min="-2" max="2" step="0.05" value="0">
+      <span class="s-val" id="v-ley">0.00</span></div>
+    <div class="s-row"><span class="s-label">Right X</span>
+      <input type="range" id="s-rex" min="-2" max="2" step="0.05" value="0">
+      <span class="s-val" id="v-rex">0.00</span></div>
+    <div class="s-row"><span class="s-label">Right Y</span>
+      <input type="range" id="s-rey" min="-2" max="2" step="0.05" value="0">
+      <span class="s-val" id="v-rey">0.00</span></div>
   </div>
 
   <!-- MOUTH -->
@@ -229,12 +229,12 @@ body.obs-mode #status  { display: none !important; }
     <div class="s-row"><span class="s-label">Scale</span>
       <input type="range" id="s-ms" min="0.4" max="2.5" step="0.05" value="1.2">
       <span class="s-val" id="v-ms">1.20</span></div>
-    <div class="s-row"><span class="s-label">X Offset (px)</span>
-      <input type="range" id="s-mx" min="-90" max="90" step="1" value="0">
-      <span class="s-val" id="v-mx">0</span></div>
-    <div class="s-row"><span class="s-label">Y Offset (px)</span>
-      <input type="range" id="s-my" min="-90" max="90" step="1" value="0">
-      <span class="s-val" id="v-my">0</span></div>
+    <div class="s-row"><span class="s-label">X Offset</span>
+      <input type="range" id="s-mx" min="-2" max="2" step="0.05" value="0">
+      <span class="s-val" id="v-mx">0.00</span></div>
+    <div class="s-row"><span class="s-label">Y Offset</span>
+      <input type="range" id="s-my" min="-2" max="2" step="0.05" value="0">
+      <span class="s-val" id="v-my">0.00</span></div>
   </div>
 
   <!-- ROTATION / POSE -->
@@ -258,10 +258,10 @@ body.obs-mode #status  { display: none !important; }
   <div class="s-section">
     <h3>🔄 Neck Twist</h3>
     <div class="s-row"><span class="s-label">Body rot %</span>
-      <input type="range" id="s-brf" min="0" max="1" step="0.05" value="0.25">
+      <input type="range" id="s-brf" min="0" max="2" step="0.05" value="0.25">
       <span class="s-val" id="v-brf">0.25</span></div>
     <div class="s-row"><span class="s-label">Twist falloff</span>
-      <input type="range" id="s-tfo" min="0.5" max="4" step="0.1" value="1.5">
+      <input type="range" id="s-tfo" min="0.1" max="10" step="0.1" value="1.5">
       <span class="s-val" id="v-tfo">1.50</span></div>
   </div>
 
@@ -281,7 +281,7 @@ body.obs-mode #status  { display: none !important; }
 // CONFIG VERSION — bump when defaults or key names change so
 // stale localStorage values don't cause weirdness.
 // ═══════════════════════════════════════════════════════════════════
-const CONFIG_VERSION = 2;
+const CONFIG_VERSION = 3;
 
 const DEFAULTS = {
   _v          : CONFIG_VERSION,
@@ -289,21 +289,21 @@ const DEFAULTS = {
   pickleX     : 0.00,
   pickleY     : 0.00,
   pickleZ     : 0.00,
-  eyeScale    : 1.20,    // multiplier on landmark-measured eye ellipse
-  eyeAllY     : 0,       // CSS px shift both eyes vertically
-  leftEyeX    : 0,       // CSS px fine-tune
+  eyeScale    : 1.20,    // multiplier on landmark polygon (expands cutout)
+  eyeAllY     : 0,       // both-eye Y offset (in pickle-half-height units)
+  leftEyeX    : 0,       // per-eye fine-tune (pickle-half-height units)
   leftEyeY    : 0,
   rightEyeX   : 0,
   rightEyeY   : 0,
-  mouthScale  : 1.20,    // multiplier on landmark-measured mouth ellipse
-  mouthX      : 0,
+  mouthScale  : 1.20,    // multiplier on landmark polygon (expands cutout)
+  mouthX      : 0,       // mouth offset (pickle-half-height units)
   mouthY      : 0,
   smoothing   : 0.60,
   yawScale    : 0.45,
   pitchScale  : 0.35,
   rollScale   : 0.45,
-  bodyRotFraction: 0.25, // how much body rotates vs head (0=none, 1=same)
-  twistFalloff   : 1.50, // power curve on blend (>1 = more top-weighted)
+  bodyRotFraction: 0.25, // how much body rotates vs head (0=none, 1=same, >1=more)
+  twistFalloff   : 1.50, // power curve on blend (higher = more concentrated at top)
   mirror      : true,
 };
 
@@ -332,9 +332,11 @@ function onResize() {
   renderer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  // Also resize the 2D face canvas
+  // Also resize the 2D canvases
   faceCanvas.width  = w;
   faceCanvas.height = h;
+  maskCanvas.width  = w;
+  maskCanvas.height = h;
 }
 window.addEventListener('resize', onResize);
 
@@ -349,6 +351,18 @@ function worldSize() {
 // ═══════════════════════════════════════════════════════════════════
 const faceCanvas = document.getElementById('face-canvas');
 const faceCtx    = faceCanvas.getContext('2d');
+
+// ═══════════════════════════════════════════════════════════════════
+// MASK CANVAS  (polygon outlines for shader hole-punch)
+// White-filled polygons = holes in the pickle.
+// ═══════════════════════════════════════════════════════════════════
+const maskCanvas  = document.createElement('canvas');
+const maskCtx     = maskCanvas.getContext('2d');
+maskCanvas.width  = window.innerWidth;
+maskCanvas.height = window.innerHeight;
+
+// Will be wired into uniforms after THREE is set up below.
+let maskTexture = null; // assigned after THREE initialisation
 
 // ═══════════════════════════════════════════════════════════════════
 // PICKLE GEOMETRY  — more cylindrical real-pickle profile
@@ -456,24 +470,14 @@ const VERT = /* glsl */`
   }
 `;
 
-// ── Fragment shader: ellipse holes + real pickle texture ─────────
+// ── Fragment shader: polygon mask holes + real pickle texture ─────
 const FRAG = /* glsl */`
   precision highp float;
 
-  // ── Eye / mouth hole ellipses (in device-pixel screen space) ───
-  uniform vec2  uLeftEye;
-  uniform float uLeftEyeRX;
-  uniform float uLeftEyeRY;
-
-  uniform vec2  uRightEye;
-  uniform float uRightEyeRX;
-  uniform float uRightEyeRY;
-
-  uniform vec2  uMouth;
-  uniform float uMouthRX;
-  uniform float uMouthRY;
-
-  uniform bool  uHolesOn;
+  // ── Polygon mask texture (white = hole) ────────────────────────
+  uniform sampler2D uMaskTex;
+  uniform vec2      uViewportSize;   // device pixels (w*pr, h*pr)
+  uniform bool      uHolesOn;
 
   varying vec2 vUv;
   varying vec3 vNormal;
@@ -495,23 +499,13 @@ const FRAG = /* glsl */`
       f.y);
   }
 
-  // Ellipse point-in test (returns true = inside = should discard)
-  bool inEllipse(vec2 fc, vec2 centre, float rx, float ry) {
-    if (rx < 1.0 || ry < 1.0) return false;
-    vec2 d = fc - centre;
-    return (d.x*d.x)/(rx*rx) + (d.y*d.y)/(ry*ry) < 1.0;
-  }
-
   void main() {
 
-    // ── Hole punch ─────────────────────────────────────────────
+    // ── Hole punch via polygon mask texture ────────────────────
     if (uHolesOn) {
-      vec2 fc = gl_FragCoord.xy;
-      if (inEllipse(fc, uLeftEye,  uLeftEyeRX,  uLeftEyeRY)  ||
-          inEllipse(fc, uRightEye, uRightEyeRX, uRightEyeRY) ||
-          inEllipse(fc, uMouth,    uMouthRX,    uMouthRY)) {
-        discard;
-      }
+      vec2 uv = gl_FragCoord.xy / uViewportSize;
+      uv.y = 1.0 - uv.y;   // canvas y=0 is top; gl_FragCoord y=0 is bottom
+      if (texture2D(uMaskTex, uv).r > 0.5) discard;
     }
 
     // ── Pickle surface ─────────────────────────────────────────
@@ -582,6 +576,11 @@ const FRAG = /* glsl */`
 `;
 
 // ── Uniforms ──────────────────────────────────────────────────────
+// Create the CanvasTexture here, after THREE is loaded
+maskTexture = new THREE.CanvasTexture(maskCanvas);
+maskTexture.generateMipmaps = false;
+maskTexture.minFilter = THREE.LinearFilter;
+
 const uniforms = {
   // Vertex — neck twist
   uHeadYaw   : { value: 0 },
@@ -591,16 +590,11 @@ const uniforms = {
   uBodyPitch : { value: 0 },
   uTwistFalloff: { value: cfg.twistFalloff },
 
-  // Fragment — hole ellipses
-  uLeftEye   : { value: new THREE.Vector2() },
-  uLeftEyeRX : { value: 0 },
-  uLeftEyeRY : { value: 0 },
-  uRightEye  : { value: new THREE.Vector2() },
-  uRightEyeRX: { value: 0 },
-  uRightEyeRY: { value: 0 },
-  uMouth     : { value: new THREE.Vector2() },
-  uMouthRX   : { value: 0 },
-  uMouthRY   : { value: 0 },
+  // Fragment — polygon mask texture
+  uMaskTex     : { value: maskTexture },
+  uViewportSize: { value: new THREE.Vector2(
+                     window.innerWidth  * renderer.getPixelRatio(),
+                     window.innerHeight * renderer.getPixelRatio()) },
   uHolesOn   : { value: false },
 };
 
@@ -611,6 +605,13 @@ const pickleMat  = new THREE.ShaderMaterial({
 const pickleGeo  = buildPickleGeometry();
 const pickleMesh = new THREE.Mesh(pickleGeo, pickleMat);
 scene.add(pickleMesh);
+
+// Keep uViewportSize in sync on resize (can only be added after uniforms exists)
+window.addEventListener('resize', () => {
+  const pr = renderer.getPixelRatio();
+  uniforms.uViewportSize.value.set(
+    window.innerWidth * pr, window.innerHeight * pr);
+});
 
 // ═══════════════════════════════════════════════════════════════════
 // LANDMARK INDICES
@@ -663,49 +664,84 @@ function lmCss(lm, idx) {
   };
 }
 
-// ── Compute bounding ellipse from a set of landmark indices ───────
-//   Returns { cx, cy, rx, ry } in CSS pixels.
-function ellipseFromLandmarks(lm, indices, scaleMult, offsetX, offsetY) {
-  const w = window.innerWidth, h = window.innerHeight;
-  let minX = Infinity, maxX = -Infinity;
-  let minY = Infinity, maxY = -Infinity;
-  let sumX = 0, sumY = 0;
+// ── Draw white-filled landmark polygon on the mask canvas ─────────
+//   scale > 1 expands the polygon around its centroid.
+//   offsetX/Y are CSS pixels.
+function drawPolygonMask(lm, contourIndices, scale, offsetX, offsetY) {
+  const w = maskCanvas.width, h = maskCanvas.height;
 
-  for (const idx of indices) {
-    const l  = lm[idx];
+  // Compute centroid
+  let cx = 0, cy = 0;
+  for (const idx of contourIndices) {
+    const l = lm[idx];
+    cx += (cfg.mirror ? 1 - l.x : l.x) * w;
+    cy += l.y * h;
+  }
+  cx /= contourIndices.length;
+  cy /= contourIndices.length;
+
+  maskCtx.beginPath();
+  for (let i = 0; i < contourIndices.length; i++) {
+    const l  = lm[contourIndices[i]];
     const sx = (cfg.mirror ? 1 - l.x : l.x) * w;
     const sy = l.y * h;
-    if (sx < minX) minX = sx;
-    if (sx > maxX) maxX = sx;
-    if (sy < minY) minY = sy;
-    if (sy > maxY) maxY = sy;
-    sumX += sx; sumY += sy;
+    // Scale around centroid, then apply offset
+    const px = cx + (sx - cx) * scale + offsetX;
+    const py = cy + (sy - cy) * scale + offsetY;
+    if (i === 0) maskCtx.moveTo(px, py);
+    else         maskCtx.lineTo(px, py);
   }
-
-  const n  = indices.length;
-  const cx = (sumX / n) + (offsetX || 0);
-  const cy = (sumY / n) + (offsetY || 0);
-  const rx = (maxX - minX) / 2 * scaleMult;
-  const ry = (maxY - minY) / 2 * scaleMult;
-
-  return { cx, cy, rx, ry };
+  maskCtx.closePath();
+  maskCtx.fill();
 }
 
-// ── Draw a video crop clipped to an ellipse on the face canvas ────
-function drawEllipseCrop(el) {
+// ── Draw webcam video clipped to a landmark polygon ───────────────
+//   The polygon is shifted to (landmark position + offset) so the
+//   actual face pixels at the landmark site are shown at the new
+//   position on screen (pickle-relative placement).
+function drawPolygonCrop(lm, contourIndices, scale, offsetX, offsetY) {
   const w = faceCanvas.width, h = faceCanvas.height;
 
+  // Compute centroid
+  let cx = 0, cy = 0;
+  for (const idx of contourIndices) {
+    const l = lm[idx];
+    cx += (cfg.mirror ? 1 - l.x : l.x) * w;
+    cy += l.y * h;
+  }
+  cx /= contourIndices.length;
+  cy /= contourIndices.length;
+
   faceCtx.save();
+
+  // Clip to the target polygon (scaled around centroid + offset)
   faceCtx.beginPath();
-  faceCtx.ellipse(el.cx, el.cy, Math.max(el.rx, 1), Math.max(el.ry, 1),
-                  0, 0, Math.PI * 2);
+  for (let i = 0; i < contourIndices.length; i++) {
+    const l  = lm[contourIndices[i]];
+    const sx = (cfg.mirror ? 1 - l.x : l.x) * w;
+    const sy = l.y * h;
+    const px = cx + (sx - cx) * scale + offsetX;
+    const py = cy + (sy - cy) * scale + offsetY;
+    if (i === 0) faceCtx.moveTo(px, py);
+    else         faceCtx.lineTo(px, py);
+  }
+  faceCtx.closePath();
   faceCtx.clip();
 
+  // Draw the video shifted so the face pixels land at the target position.
+  // translate(tx, ty) then drawImage at origin means source pixel (x,y)
+  // appears at canvas (x+tx, y+ty).
   if (cfg.mirror) {
-    faceCtx.translate(w, 0);
+    // With mirror: source pixel (l.x*w, l.y*h) → canvas ((1-l.x)*w, l.y*h)
+    // We want it at centroid+offset, which is already where the clip is.
+    // Transform: translate(w+offsetX, offsetY); scale(-1,1)
+    // maps draw coord (x,y) → canvas (w+offsetX-x, offsetY+y)
+    // so source pixel (l.x*w, l.y*h) → ((1-l.x)*w + offsetX, l.y*h + offsetY) ✓
+    faceCtx.translate(w + offsetX, offsetY);
     faceCtx.scale(-1, 1);
+  } else {
+    faceCtx.translate(offsetX, offsetY);
   }
-  // Draw the full video frame; the clip path restricts it to the ellipse
   faceCtx.drawImage(video, 0, 0, w, h);
   faceCtx.restore();
 }
@@ -867,35 +903,33 @@ function animate() {
     uniforms.uBodyPitch.value  = smooth.rx * cfg.bodyRotFraction;
     uniforms.uTwistFalloff.value = cfg.twistFalloff;
 
-    // ── Compute ellipses from landmarks ─────────────────────────
-    const pr = renderer.getPixelRatio();
-    const h  = window.innerHeight;
+    // ── Compute pixel offsets (pickle-size-relative units → CSS px) ─
+    // smooth.scale is half-pickle-height in world units.
+    // ws.h is the world-space viewport height.
+    // → picklePixelHalfH = half-pickle-height in CSS pixels.
+    const picklePixelHalfH = smooth.scale / ws.h * window.innerHeight;
 
-    const leEl = ellipseFromLandmarks(lm, LEFT_EYE_CONTOUR,  cfg.eyeScale,
-                                      cfg.leftEyeX  + 0, cfg.eyeAllY + cfg.leftEyeY);
-    const reEl = ellipseFromLandmarks(lm, RIGHT_EYE_CONTOUR, cfg.eyeScale,
-                                      cfg.rightEyeX + 0, cfg.eyeAllY + cfg.rightEyeY);
-    const mEl  = ellipseFromLandmarks(lm, MOUTH_CONTOUR,     cfg.mouthScale,
-                                      cfg.mouthX, cfg.mouthY);
+    const eyeAllOffY   = cfg.eyeAllY   * picklePixelHalfH;
+    const leftEyeOffX  = cfg.leftEyeX  * picklePixelHalfH;
+    const leftEyeOffY  = cfg.leftEyeY  * picklePixelHalfH + eyeAllOffY;
+    const rightEyeOffX = cfg.rightEyeX * picklePixelHalfH;
+    const rightEyeOffY = cfg.rightEyeY * picklePixelHalfH + eyeAllOffY;
+    const mouthOffX    = cfg.mouthX    * picklePixelHalfH;
+    const mouthOffY    = cfg.mouthY    * picklePixelHalfH;
 
-    // Update shader uniforms (device pixels; Y flipped for gl_FragCoord)
-    uniforms.uLeftEye.value.set(leEl.cx * pr, (h - leEl.cy) * pr);
-    uniforms.uLeftEyeRX.value  = leEl.rx * pr;
-    uniforms.uLeftEyeRY.value  = leEl.ry * pr;
-
-    uniforms.uRightEye.value.set(reEl.cx * pr, (h - reEl.cy) * pr);
-    uniforms.uRightEyeRX.value = reEl.rx * pr;
-    uniforms.uRightEyeRY.value = reEl.ry * pr;
-
-    uniforms.uMouth.value.set(mEl.cx * pr, (h - mEl.cy) * pr);
-    uniforms.uMouthRX.value    = mEl.rx * pr;
-    uniforms.uMouthRY.value    = mEl.ry * pr;
+    // ── Draw polygon mask for shader hole-punch ──────────────────
+    maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+    maskCtx.fillStyle = '#ffffff';
+    drawPolygonMask(lm, LEFT_EYE_CONTOUR,  cfg.eyeScale,   leftEyeOffX,  leftEyeOffY);
+    drawPolygonMask(lm, RIGHT_EYE_CONTOUR, cfg.eyeScale,   rightEyeOffX, rightEyeOffY);
+    drawPolygonMask(lm, MOUTH_CONTOUR,     cfg.mouthScale, mouthOffX,    mouthOffY);
+    maskTexture.needsUpdate = true;
 
     // ── Draw eye + mouth crops on the 2D face canvas ────────────
     faceCtx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
-    drawEllipseCrop(leEl);
-    drawEllipseCrop(reEl);
-    drawEllipseCrop(mEl);
+    drawPolygonCrop(lm, LEFT_EYE_CONTOUR,  cfg.eyeScale,   leftEyeOffX,  leftEyeOffY);
+    drawPolygonCrop(lm, RIGHT_EYE_CONTOUR, cfg.eyeScale,   rightEyeOffX, rightEyeOffY);
+    drawPolygonCrop(lm, MOUTH_CONTOUR,     cfg.mouthScale, mouthOffX,    mouthOffY);
   }
 
   renderer.render(scene, camera);
@@ -915,14 +949,14 @@ const sliders = [
   ['s-py',   'v-py',   'pickleY',           2],
   ['s-pz',   'v-pz',   'pickleZ',           1],
   ['s-es',   'v-es',   'eyeScale',          2],
-  ['s-eay',  'v-eay',  'eyeAllY',           0],
-  ['s-lex',  'v-lex',  'leftEyeX',          0],
-  ['s-ley',  'v-ley',  'leftEyeY',          0],
-  ['s-rex',  'v-rex',  'rightEyeX',         0],
-  ['s-rey',  'v-rey',  'rightEyeY',         0],
+  ['s-eay',  'v-eay',  'eyeAllY',           2],
+  ['s-lex',  'v-lex',  'leftEyeX',          2],
+  ['s-ley',  'v-ley',  'leftEyeY',          2],
+  ['s-rex',  'v-rex',  'rightEyeX',         2],
+  ['s-rey',  'v-rey',  'rightEyeY',         2],
   ['s-ms',   'v-ms',   'mouthScale',        2],
-  ['s-mx',   'v-mx',   'mouthX',            0],
-  ['s-my',   'v-my',   'mouthY',            0],
+  ['s-mx',   'v-mx',   'mouthX',            2],
+  ['s-my',   'v-my',   'mouthY',            2],
   ['s-sm',   'v-sm',   'smoothing',         2],
   ['s-ys',   'v-ys',   'yawScale',          2],
   ['s-ps',   'v-ps',   'pitchScale',        2],
