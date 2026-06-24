@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🥒 Pickle Face</title>
+<style>
+/* ─── Reset & base ─────────────────────────────────────────── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  overflow: hidden;
+  background: #0d1a0d;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* OBS mode: transparent window, hide all UI chrome */
+body.obs-mode { background: transparent !important; }
+body.obs-mode #controls,
+body.obs-mode #settings,
+body.obs-mode #status  { display: none !important; }
+
+/* ─── Webcam video ──────────────────────────────────────────── */
+#video {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  /* mirrored by default – feels natural looking at yourself */
+  transform: scaleX(-1);
+  z-index: 0;
+}
+body.obs-mode #video { display: none; }
+
+/* ─── Three.js canvas ───────────────────────────────────────── */
+#canvas {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;   /* let clicks reach HTML elements beneath */
+  z-index: 1;
+}
+
+/* ─── Top controls bar ──────────────────────────────────────── */
+#controls {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 30;
+}
+
+.btn {
+  padding: 5px 16px;
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 20px;
+  background: rgba(8,22,8,0.75);
+  color: #ddd;
+  cursor: pointer;
+  font-size: 13px;
+  letter-spacing: 0.3px;
+  backdrop-filter: blur(6px);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  user-select: none;
+  white-space: nowrap;
+}
+.btn:hover  { background: rgba(30,90,30,0.75); border-color: #4ade80; }
+.btn.active { background: rgba(15,60,15,0.90); border-color: #4ade80; color: #4ade80; }
+
+/* ─── Settings panel ────────────────────────────────────────── */
+#settings {
+  position: fixed;
+  top: 48px;
+  right: 12px;
+  width: 264px;
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+  background: rgba(6,14,6,0.90);
+  border: 1px solid rgba(74,222,128,0.22);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #ccc;
+  font-size: 12px;
+  z-index: 30;
+  backdrop-filter: blur(12px);
+  display: none;
+}
+#settings.open { display: block; }
+
+/* scrollbar styling */
+#settings::-webkit-scrollbar { width: 4px; }
+#settings::-webkit-scrollbar-track { background: transparent; }
+#settings::-webkit-scrollbar-thumb { background: #2a5c2a; border-radius: 4px; }
+
+.s-section {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.s-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+.s-section h3 {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: #4ade80;
+  margin-bottom: 7px;
+}
+
+.s-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 5px;
+  gap: 4px;
+}
+.s-label {
+  width: 100px;
+  flex-shrink: 0;
+  color: #aaa;
+  font-size: 11px;
+}
+.s-row input[type="range"] {
+  flex: 1;
+  cursor: pointer;
+  accent-color: #4ade80;
+  height: 3px;
+}
+.s-val {
+  width: 36px;
+  text-align: right;
+  color: #4ade80;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+/* Reset button inside settings */
+#btn-reset {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 5px;
+  background: rgba(120,20,20,0.5);
+  border: 1px solid rgba(255,80,80,0.3);
+  border-radius: 6px;
+  color: #f87171;
+  font-size: 11px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s;
+}
+#btn-reset:hover { background: rgba(160,30,30,0.7); }
+
+/* ─── Status bar ────────────────────────────────────────────── */
+#status {
+  position: fixed;
+  bottom: 10px;
+  left: 12px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.45);
+  z-index: 30;
+  font-family: 'Courier New', monospace;
+  pointer-events: none;
+}
+</style>
+</head>
+<body>
+
+<!-- ── Webcam feed (background) ─────────────────────────────── -->
+<video id="video" autoplay muted playsinline></video>
+
+<!-- ── Three.js render canvas ───────────────────────────────── -->
+<canvas id="canvas"></canvas>
+
+<!-- ── Top control buttons ──────────────────────────────────── -->
+<div id="controls">
+  <button class="btn" id="btn-obs"      title="Toggle transparent background for OBS">OBS Mode</button>
+  <button class="btn active" id="btn-mirror"  title="Mirror the webcam">Mirror</button>
+  <button class="btn" id="btn-settings" title="Open settings panel">⚙ Settings</button>
+</div>
+
+<!-- ── Settings panel ───────────────────────────────────────── -->
+<div id="settings">
+
+  <!-- PICKLE -->
+  <div class="s-section">
+    <h3>🥒 Pickle</h3>
+    <div class="s-row"><span class="s-label">Size</span>
+      <input type="range" id="s-size"  min="0.3" max="3"    step="0.05" value="1.1">
+      <span class="s-val" id="v-size">1.10</span></div>
+    <div class="s-row"><span class="s-label">X Offset</span>
+      <input type="range" id="s-px"    min="-2"  max="2"    step="0.02" value="0">
+      <span class="s-val" id="v-px">0.00</span></div>
+    <div class="s-row"><span class="s-label">Y Offset</span>
+      <input type="range" id="s-py"    min="-2"  max="2"    step="0.02" value="0">
+      <span class="s-val" id="v-py">0.00</span></div>
+    <div class="s-row"><span class="s-label">Z (depth)</span>
+      <input type="range" id="s-pz"    min="-3"  max="3"    step="0.1"  value="0">
+      <span class="s-val" id="v-pz">0.0</span></div>
+  </div>
+
+  <!-- EYES -->
+  <div class="s-section">
+    <h3>👁 Eyes</h3>
+    <div class="s-row"><span class="s-label">Radius (px)</span>
+      <input type="range" id="s-er"    min="5"   max="110"  step="1"    value="30">
+      <span class="s-val" id="v-er">30</span></div>
+    <div class="s-row"><span class="s-label">Both Y (px)</span>
+      <input type="range" id="s-eay"   min="-90" max="90"   step="1"    value="0">
+      <span class="s-val" id="v-eay">0</span></div>
+    <div class="s-row"><span class="s-label">Left X (px)</span>
+      <input type="range" id="s-lex"   min="-90" max="90"   step="1"    value="0">
+      <span class="s-val" id="v-lex">0</span></div>
+    <div class="s-row"><span class="s-label">Left Y (px)</span>
+      <input type="range" id="s-ley"   min="-90" max="90"   step="1"    value="0">
+      <span class="s-val" id="v-ley">0</span></div>
+    <div class="s-row"><span class="s-label">Right X (px)</span>
+      <input type="range" id="s-rex"   min="-90" max="90"   step="1"    value="0">
+      <span class="s-val" id="v-rex">0</span></div>
+    <div class="s-row"><span class="s-label">Right Y (px)</span>
+      <input type="range" id="s-rey"   min="-90" max="90"   step="1"    value="0">
+      <span class="s-val" id="v-rey">0</span></div>
+  </div>
+
+  <!-- MOUTH -->
+  <div class="s-section">
+    <h3>👄 Mouth</h3>
+    <div class="s-row"><span class="s-label">Radius (px)</span>
+      <input type="range" id="s-mr"    min="5"   max="140"  step="1"    value="38">
+      <span class="s-val" id="v-mr">38</span></div>
+    <div class="s-row"><span class="s-label">X Offset (px)</span>
+      <input type="range" id="s-mx"    min="-90" max="90"   step="1"    value="0">
+      <span class="s-val" id="v-mx">0</span></div>
+    <div class="s-row"><span class="s-label">Y Offset (px)</span>
+      <input type="range" id="s-my"    min="-90" max="90"   step="1"    value="0">
+      <span class="s-val" id="v-my">0</span></div>
+  </div>
+
+  <!-- TRACKING -->
+  <div class="s-section">
+    <h3>🎯 Tracking</h3>
+    <div class="s-row"><span class="s-label">Smoothing</span>
+      <input type="range" id="s-sm"    min="0"   max="0.97" step="0.01" value="0.55">
+      <span class="s-val" id="v-sm">0.55</span></div>
+    <div class="s-row"><span class="s-label">Yaw scale</span>
+      <input type="range" id="s-ys"    min="0"   max="2.5"  step="0.05" value="1.0">
+      <span class="s-val" id="v-ys">1.00</span></div>
+    <div class="s-row"><span class="s-label">Pitch scale</span>
+      <input type="range" id="s-ps"    min="0"   max="2.5"  step="0.05" value="0.75">
+      <span class="s-val" id="v-ps">0.75</span></div>
+    <div class="s-row"><span class="s-label">Roll scale</span>
+      <input type="range" id="s-rs"    min="0"   max="2"    step="0.05" value="1.0">
+      <span class="s-val" id="v-rs">1.00</span></div>
+  </div>
+
+  <button id="btn-reset">↺ Reset to defaults</button>
+</div>
+
+<!-- ── Status ─────────────────────────────────────────────────── -->
+<div id="status">⏳ Loading MediaPipe…</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- Three.js r128                                              -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<!-- MediaPipe Face Mesh (self-contained; no camera_utils needed) -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js"
+        crossorigin="anonymous"></script>
+
+<script>
+"use strict";
+// ═══════════════════════════════════════════════════════════════════
+// DEFAULT CONFIG  (also the "reset" values)
+// ═══════════════════════════════════════════════════════════════════
+const DEFAULTS = {
+  pickleSize : 1.10,
+  pickleX    : 0.00,
+  pickleY    : 0.00,
+  pickleZ    : 0.00,
+  eyeRadius  : 30,
+  eyeAllY    : 0,
+  leftEyeX   : 0,
+  leftEyeY   : 0,
+  rightEyeX  : 0,
+  rightEyeY  : 0,
+  mouthRadius: 38,
+  mouthX     : 0,
+  mouthY     : 0,
+  smoothing  : 0.55,
+  yawScale   : 1.00,
+  pitchScale : 0.75,
+  rollScale  : 1.00,
+  mirror     : true,
+};
+
+// Live config — load from localStorage if available
+const cfg = Object.assign({}, DEFAULTS);
+try {
+  const saved = JSON.parse(localStorage.getItem('pickleConfig') || '{}');
+  Object.assign(cfg, saved);
+} catch(_) {}
+
+// ═══════════════════════════════════════════════════════════════════
+// THREE.JS RENDERER / SCENE / CAMERA
+// ═══════════════════════════════════════════════════════════════════
+const threeCanvas = document.getElementById('canvas');
+const renderer   = new THREE.WebGLRenderer({ canvas: threeCanvas, alpha: true, antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setClearColor(0x000000, 0);          // fully transparent clear
+
+const scene  = new THREE.Scene();
+const FOV    = 45;
+const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 1000);
+camera.position.z = 5;
+
+function onResize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', onResize);
+onResize();
+
+// Utility: world-space extents at z=0 for the current camera
+function worldSize() {
+  const halfFov = (FOV / 2) * (Math.PI / 180);
+  const wh = 2 * Math.tan(halfFov) * camera.position.z;
+  return { w: wh * camera.aspect, h: wh };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PICKLE GEOMETRY  (LatheGeometry = one continuous mesh)
+// ═══════════════════════════════════════════════════════════════════
+function buildPickleGeometry() {
+  // Profile: [radius, y].  Y goes from -1 (bottom) to +1 (top).
+  // The shape is rotated around the Y axis → pickle silhouette from front.
+  const profile = [
+    [0.02, -1.000],
+    [0.09, -0.970],
+    [0.19, -0.910],
+    [0.30, -0.800],
+    [0.38, -0.640],
+    [0.43, -0.430],
+    [0.455,-0.190],
+    [0.460, 0.000],
+    [0.450, 0.200],
+    [0.430, 0.390],
+    [0.395, 0.560],
+    [0.340, 0.700],
+    [0.255, 0.820],
+    [0.150, 0.910],
+    [0.065, 0.965],
+    [0.018, 1.000],
+  ].map(([r, y]) => new THREE.Vector2(r, y));
+
+  return new THREE.LatheGeometry(profile, 80);
+}
+
+// ───────────────────────────────────────────────────────────────
+// GLSL shaders
+// ───────────────────────────────────────────────────────────────
+const VERT = /* glsl */`
+  varying vec2  vUv;
+  varying vec3  vNormal;
+  varying vec3  vViewDir;
+
+  void main() {
+    vUv     = uv;
+    vNormal = normalize(normalMatrix * normal);
+
+    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+    vViewDir   = normalize(-mvPos.xyz);
+
+    gl_Position = projectionMatrix * mvPos;
+  }
+`;
+
+const FRAG = /* glsl */`
+  precision highp float;
+
+  // ── Hole positions in physical-pixel screen space ─────────────
+  uniform vec2  uLeftEye;
+  uniform vec2  uRightEye;
+  uniform vec2  uMouth;
+  uniform float uLeftEyeR;
+  uniform float uRightEyeR;
+  uniform float uMouthR;
+  uniform bool  uHolesOn;
+
+  varying vec2  vUv;
+  varying vec3  vNormal;
+  varying vec3  vViewDir;
+
+  // ── Procedural noise ──────────────────────────────────────────
+  float hash2(vec2 p) {
+    p = fract(p * vec2(127.1, 311.7));
+    p += dot(p, p + 17.5);
+    return fract(p.x * p.y);
+  }
+
+  float valueNoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash2(i);
+    float b = hash2(i + vec2(1.0, 0.0));
+    float c = hash2(i + vec2(0.0, 1.0));
+    float d = hash2(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+  }
+
+  void main() {
+
+    // ── Screen-space hole punch ─────────────────────────────────
+    if (uHolesOn) {
+      vec2 fc = gl_FragCoord.xy;
+      if (length(fc - uLeftEye)  < uLeftEyeR  ||
+          length(fc - uRightEye) < uRightEyeR ||
+          length(fc - uMouth)    < uMouthR) {
+        discard;
+      }
+    }
+
+    // ── Pickle surface texture ──────────────────────────────────
+    // layered noise for natural green variation
+    float n1 = valueNoise(vUv * 5.0);
+    float n2 = valueNoise(vUv * 13.0 + vec2(3.1, 1.7));
+    float n3 = valueNoise(vUv * 28.0 + vec2(6.3, 5.1));
+    float tex = n1 * 0.55 + n2 * 0.30 + n3 * 0.15;
+
+    vec3 darkGreen  = vec3(0.09, 0.30, 0.08);
+    vec3 baseGreen  = vec3(0.17, 0.50, 0.14);
+    vec3 lightGreen = vec3(0.27, 0.62, 0.20);
+
+    vec3 col = mix(darkGreen, lightGreen, tex);
+
+    // wart bumps: darker craters with a tiny pale centre
+    float wart = smoothstep(0.70, 0.76, valueNoise(vUv * vec2(7.5, 5.5) + 1.3));
+    col = mix(col, darkGreen * 0.65, wart * 0.65);
+    float wartTop = smoothstep(0.785, 0.800, valueNoise(vUv * vec2(7.5, 5.5) + 1.3));
+    col = mix(col, lightGreen * 1.1, wartTop * 0.3);
+
+    // subtle vertical stripe darker lines (like a real pickle)
+    float stripe = smoothstep(0.48, 0.52, abs(fract(vUv.x * 16.0) - 0.5) * 2.0);
+    col = mix(col, col * 0.82, stripe * 0.25);
+
+    // ── Phong lighting ──────────────────────────────────────────
+    vec3 N = normalize(vNormal);
+    vec3 V = normalize(vViewDir);
+    vec3 L = normalize(vec3(0.55, 1.0, 0.85));
+
+    float diff = max(dot(N, L), 0.0);
+    float spec = pow(max(dot(reflect(-L, N), V), 0.0), 36.0) * 0.18;
+    // soft rim / subsurface-scatter hint
+    float rim  = pow(1.0 - max(dot(N, V), 0.0), 2.8) * 0.12;
+
+    vec3 finalCol = col * (0.28 + diff * 0.72) + vec3(spec * 0.9, spec, spec * 0.6)
+                  + vec3(rim * 0.05, rim * 0.18, rim * 0.04);
+
+    gl_FragColor = vec4(finalCol, 1.0);
+  }
+`;
+
+// ── Shader uniforms (shared reference, updated every frame) ───────
+const uniforms = {
+  uLeftEye  : { value: new THREE.Vector2() },
+  uRightEye : { value: new THREE.Vector2() },
+  uMouth    : { value: new THREE.Vector2() },
+  uLeftEyeR : { value: 30.0 },
+  uRightEyeR: { value: 30.0 },
+  uMouthR   : { value: 38.0 },
+  uHolesOn  : { value: false },
+};
+
+const pickleMat  = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG,
+                                              uniforms, side: THREE.FrontSide });
+const pickleGeo  = buildPickleGeometry();
+const pickleMesh = new THREE.Mesh(pickleGeo, pickleMat);
+scene.add(pickleMesh);
+
+// ═══════════════════════════════════════════════════════════════════
+// FACE TRACKING  (MediaPipe FaceMesh)
+// ═══════════════════════════════════════════════════════════════════
+const video    = document.getElementById('video');
+const statusEl = document.getElementById('status');
+
+// MediaPipe landmark indices used
+const LM = {
+  noseTip   :   4,
+  eyeMidL   : 168,   // glabella, good horizontal reference
+  leftIris  : 468,   // subject's LEFT iris  (requires refineLandmarks)
+  rightIris : 473,   // subject's RIGHT iris
+  forehead  :  10,
+  chin      : 152,
+  mouthTop  :  13,
+  mouthBot  :  14,
+  leftEyeOut:  33,   // fallback if iris not available
+  rightEyeOut: 263,
+};
+
+// Smooth-tracking state
+const smooth = { x: null, y: null, scale: null, ry: 0, rx: 0, rz: 0 };
+
+let faceVisible = false;
+let lastLm      = null;
+
+// ── Convert a normalised landmark to physical-pixel screen coords ──
+//   gl_FragCoord has (0,0) at bottom-left.
+function lmToScreen(lm, idx) {
+  const l  = lm[idx];
+  const w  = window.innerWidth, h = window.innerHeight;
+  const pr = renderer.getPixelRatio();
+  // When mirrored: flip X so the hole matches the flipped video display
+  const sx = (cfg.mirror ? 1 - l.x : l.x) * w;
+  const sy = l.y * h;
+  // Flip y for gl_FragCoord (0 = bottom)
+  return new THREE.Vector2(sx * pr, (h - sy) * pr);
+}
+
+// ── Head-pose estimation from landmarks ───────────────────────────
+function headPose(lm) {
+  const leftIris  = lm[LM.leftIris]  || { x: (lm[33].x + lm[133].x) / 2, y: (lm[33].y  + lm[133].y)  / 2 };
+  const rightIris = lm[LM.rightIris] || { x: (lm[263].x+ lm[362].x) / 2, y: (lm[263].y + lm[362].y) / 2 };
+  const nose      = lm[LM.noseTip];
+  const forehead  = lm[LM.forehead];
+  const chin      = lm[LM.chin];
+
+  const eyeMidX   = (leftIris.x + rightIris.x) / 2;
+  const eyeMidY   = (leftIris.y + rightIris.y) / 2;
+  const eyeSpan   = Math.abs(rightIris.x - leftIris.x) || 0.001;
+  const faceH     = Math.abs(chin.y - forehead.y)      || 0.001;
+
+  // Yaw: lateral nose offset, normalised by half-eye-span → ~[-1, 1] at ±45°
+  // Flip when mirrored so the pickle turns the same way the face appears to turn.
+  const rawYaw   = (nose.x - eyeMidX) / (eyeSpan / 2) * (Math.PI / 2.2);
+  const yaw      = rawYaw * (cfg.mirror ? -1 : 1) * cfg.yawScale;
+
+  // Pitch: vertical nose offset from the midpoint between eyes and chin
+  const midY     = eyeMidY + faceH * 0.08;
+  const rawPitch = -(nose.y - midY) / (faceH * 0.28) * (Math.PI / 2.8);
+  const pitch    = rawPitch * cfg.pitchScale;
+
+  // Roll: tilt of the eye line
+  const rawRoll  = Math.atan2(rightIris.y - leftIris.y, rightIris.x - leftIris.x);
+  const roll     = rawRoll * (cfg.mirror ? -1 : 1) * cfg.rollScale;
+
+  return { yaw, pitch, roll };
+}
+
+// ── Face centre (normalised 0-1) ───────────────────────────────────
+function faceCenter(lm) {
+  const li  = lm[LM.leftIris]  || lm[LM.leftEyeOut];
+  const ri  = lm[LM.rightIris] || lm[LM.rightEyeOut];
+  const top = lm[LM.forehead];
+  const bot = lm[LM.chin];
+  return {
+    x: (li.x + ri.x) / 2,
+    y: (top.y + bot.y) / 2,
+  };
+}
+
+// ── Face height (normalised) ───────────────────────────────────────
+function faceHeight(lm) {
+  return Math.abs(lm[LM.chin].y - lm[LM.forehead].y) || 0.1;
+}
+
+// ── MediaPipe FaceMesh setup ───────────────────────────────────────
+const faceMesh = new FaceMesh({
+  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${f}`,
+});
+
+faceMesh.setOptions({
+  maxNumFaces    : 1,
+  refineLandmarks: true,         // gives us iris landmarks (468, 473)
+  minDetectionConfidence: 0.5,
+  minTrackingConfidence : 0.5,
+});
+
+faceMesh.onResults(results => {
+  if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+    lastLm      = results.multiFaceLandmarks[0];
+    faceVisible = true;
+    uniforms.uHolesOn.value = true;
+    statusEl.textContent = '🥒 Pickle active';
+  } else {
+    faceVisible = false;
+    uniforms.uHolesOn.value = false;
+    statusEl.textContent = '👁 Searching…';
+  }
+});
+
+// ── Start webcam ───────────────────────────────────────────────────
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+    });
+    video.srcObject = stream;
+    await new Promise(r => { video.onloadedmetadata = r; });
+    video.play();
+
+    statusEl.textContent = '👁 Searching…';
+
+    // Feed frames into MediaPipe on every animation frame
+    let lastSend = 0;
+    async function sendFrame(ts) {
+      if (video.readyState >= 2 && ts - lastSend > 33) {  // cap ~30 fps to MP
+        lastSend = ts;
+        await faceMesh.send({ image: video });
+      }
+      requestAnimationFrame(sendFrame);
+    }
+    requestAnimationFrame(sendFrame);
+
+  } catch (err) {
+    statusEl.textContent = `❌ Camera: ${err.message}`;
+  }
+}
+
+faceMesh.initialize().then(() => {
+  statusEl.textContent = '📷 Requesting camera…';
+  startCamera();
+}).catch(err => {
+  statusEl.textContent = `❌ MediaPipe: ${err.message}`;
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ANIMATION LOOP
+// ═══════════════════════════════════════════════════════════════════
+function animate() {
+  requestAnimationFrame(animate);
+
+  if (faceVisible && lastLm) {
+    const ws   = worldSize();
+    const s    = cfg.smoothing;
+    const lm   = lastLm;
+    const pose = headPose(lm);
+    const fc   = faceCenter(lm);
+    const fh   = faceHeight(lm);
+
+    // Target world position of pickle centre
+    const mirX  = cfg.mirror ? 1 - fc.x : fc.x;
+    const tarX  = (mirX  - 0.5) * ws.w + cfg.pickleX;
+    const tarY  = -(fc.y - 0.5) * ws.h + cfg.pickleY;
+    // Pickle height in world units: profile spans -1..+1 → 2 units
+    const tarSc = (fh * ws.h / 2) * cfg.pickleSize;
+
+    // Initialise on first detection to avoid teleport
+    if (smooth.x === null) {
+      smooth.x = tarX; smooth.y = tarY; smooth.scale = tarSc;
+      smooth.ry = pose.yaw; smooth.rx = pose.pitch; smooth.rz = pose.roll;
+    }
+
+    smooth.x     += (tarX     - smooth.x)     * (1 - s);
+    smooth.y     += (tarY     - smooth.y)     * (1 - s);
+    smooth.scale += (tarSc    - smooth.scale) * (1 - s);
+    smooth.ry    += (pose.yaw   - smooth.ry)  * (1 - s);
+    smooth.rx    += (pose.pitch - smooth.rx)  * (1 - s);
+    smooth.rz    += (pose.roll  - smooth.rz)  * (1 - s);
+
+    pickleMesh.position.set(smooth.x, smooth.y, cfg.pickleZ);
+    pickleMesh.scale.setScalar(smooth.scale);
+    pickleMesh.rotation.set(smooth.rx, smooth.ry, smooth.rz);
+
+    // ── Update eye/mouth hole uniforms ──────────────────────────
+    const pr = renderer.getPixelRatio();
+    const h  = window.innerHeight;
+
+    // left/right from VIEWER perspective in mirrored mode:
+    //   lm[468] = subject's left iris → appears on viewer's LEFT when mirrored
+    //   lm[473] = subject's right iris → appears on viewer's RIGHT when mirrored
+    const leS = lmToScreen(lm, LM.leftIris);
+    const reS = lmToScreen(lm, LM.rightIris);
+    const mtS = lmToScreen(lm, LM.mouthTop);
+    const mbS = lmToScreen(lm, LM.mouthBot);
+    const mS  = new THREE.Vector2((mtS.x + mbS.x) / 2, (mtS.y + mbS.y) / 2);
+
+    uniforms.uLeftEye.value.set(
+      leS.x + cfg.leftEyeX  * pr,
+      leS.y + (cfg.eyeAllY + cfg.leftEyeY)  * pr,
+    );
+    uniforms.uRightEye.value.set(
+      reS.x + cfg.rightEyeX * pr,
+      reS.y + (cfg.eyeAllY + cfg.rightEyeY) * pr,
+    );
+    uniforms.uMouth.value.set(
+      mS.x + cfg.mouthX * pr,
+      mS.y + cfg.mouthY * pr,
+    );
+    uniforms.uLeftEyeR.value  = cfg.eyeRadius * pr;
+    uniforms.uRightEyeR.value = cfg.eyeRadius * pr;
+    uniforms.uMouthR.value    = cfg.mouthRadius * pr;
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// ═══════════════════════════════════════════════════════════════════
+// SETTINGS PANEL  — slider bindings
+// ═══════════════════════════════════════════════════════════════════
+const sliders = [
+  // [input-id, value-id, cfg-key, decimals]
+  ['s-size', 'v-size', 'pickleSize', 2],
+  ['s-px',   'v-px',   'pickleX',    2],
+  ['s-py',   'v-py',   'pickleY',    2],
+  ['s-pz',   'v-pz',   'pickleZ',    1],
+  ['s-er',   'v-er',   'eyeRadius',  0],
+  ['s-eay',  'v-eay',  'eyeAllY',    0],
+  ['s-lex',  'v-lex',  'leftEyeX',   0],
+  ['s-ley',  'v-ley',  'leftEyeY',   0],
+  ['s-rex',  'v-rex',  'rightEyeX',  0],
+  ['s-rey',  'v-rey',  'rightEyeY',  0],
+  ['s-mr',   'v-mr',   'mouthRadius',0],
+  ['s-mx',   'v-mx',   'mouthX',     0],
+  ['s-my',   'v-my',   'mouthY',     0],
+  ['s-sm',   'v-sm',   'smoothing',  2],
+  ['s-ys',   'v-ys',   'yawScale',   2],
+  ['s-ps',   'v-ps',   'pitchScale', 2],
+  ['s-rs',   'v-rs',   'rollScale',  2],
+];
+
+function applySliderValue(cfgKey, rawVal, decimals) {
+  cfg[cfgKey] = decimals > 0 ? parseFloat(rawVal) : parseInt(rawVal, 10);
+}
+
+function syncSliderUI(sid, vid, cfgKey, decimals) {
+  const el  = document.getElementById(sid);
+  const vel = document.getElementById(vid);
+  if (!el) return;
+  el.value   = cfg[cfgKey];
+  vel.textContent = Number(cfg[cfgKey]).toFixed(decimals);
+}
+
+sliders.forEach(([sid, vid, key, dec]) => {
+  const el = document.getElementById(sid);
+  if (!el) return;
+  syncSliderUI(sid, vid, key, dec);
+  el.addEventListener('input', () => {
+    applySliderValue(key, el.value, dec);
+    document.getElementById(vid).textContent = Number(cfg[key]).toFixed(dec);
+    saveConfig();
+  });
+});
+
+function saveConfig() {
+  try { localStorage.setItem('pickleConfig', JSON.stringify(cfg)); } catch(_) {}
+}
+
+// Reset button
+document.getElementById('btn-reset').addEventListener('click', () => {
+  Object.assign(cfg, DEFAULTS);
+  sliders.forEach(([sid, vid, key, dec]) => syncSliderUI(sid, vid, key, dec));
+  saveConfig();
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// TOP BUTTONS
+// ═══════════════════════════════════════════════════════════════════
+document.getElementById('btn-obs').addEventListener('click', () => {
+  document.body.classList.toggle('obs-mode');
+  document.getElementById('btn-obs').classList.toggle('active');
+});
+
+document.getElementById('btn-settings').addEventListener('click', () => {
+  document.getElementById('settings').classList.toggle('open');
+  document.getElementById('btn-settings').classList.toggle('active');
+});
+
+const mirrorBtn = document.getElementById('btn-mirror');
+// Sync initial mirror state with CSS / button
+(function initMirror() {
+  video.style.transform = cfg.mirror ? 'scaleX(-1)' : 'none';
+  mirrorBtn.classList.toggle('active', cfg.mirror);
+})();
+
+mirrorBtn.addEventListener('click', () => {
+  cfg.mirror = !cfg.mirror;
+  video.style.transform = cfg.mirror ? 'scaleX(-1)' : 'none';
+  mirrorBtn.classList.toggle('active', cfg.mirror);
+  saveConfig();
+});
+
+// ── Keyboard shortcuts ─────────────────────────────────────────────
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 's' || e.key === 'S') document.getElementById('btn-settings').click();
+  if (e.key === 'o' || e.key === 'O') document.getElementById('btn-obs').click();
+  if (e.key === 'm' || e.key === 'M') mirrorBtn.click();
+});
+</script>
+</body>
+</html>
