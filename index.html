@@ -486,18 +486,23 @@ scene.add(pickleMesh);
 const video    = document.getElementById('video');
 const statusEl = document.getElementById('status');
 
-// MediaPipe landmark indices used
+// MediaPipe FaceMesh 478-landmark indices used by this app.
+// Iris indices (468, 473) require refineLandmarks: true.
+// Fallback eye-corner indices are used when iris points are absent.
 const LM = {
-  noseTip   :   4,
-  eyeMidL   : 168,   // glabella, good horizontal reference
-  leftIris  : 468,   // subject's LEFT iris  (requires refineLandmarks)
-  rightIris : 473,   // subject's RIGHT iris
-  forehead  :  10,
-  chin      : 152,
-  mouthTop  :  13,
-  mouthBot  :  14,
-  leftEyeOut:  33,   // fallback if iris not available
-  rightEyeOut: 263,
+  noseTip        :   4,
+  eyeMidL        : 168,   // glabella — stable horizontal reference
+  leftIris       : 468,   // subject's LEFT iris centre (refineLandmarks)
+  rightIris      : 473,   // subject's RIGHT iris centre (refineLandmarks)
+  forehead       :  10,
+  chin           : 152,
+  mouthTop       :  13,
+  mouthBot       :  14,
+  // Fallback eye-corner landmarks used when iris detection is unavailable:
+  leftEyeOuter   :  33,   // outer corner, subject's left eye
+  leftEyeInner   : 133,   // inner corner, subject's left eye
+  rightEyeOuter  : 263,   // outer corner, subject's right eye
+  rightEyeInner  : 362,   // inner corner, subject's right eye
 };
 
 // Smooth-tracking state
@@ -521,8 +526,16 @@ function lmToScreen(lm, idx) {
 
 // ── Head-pose estimation from landmarks ───────────────────────────
 function headPose(lm) {
-  const leftIris  = lm[LM.leftIris]  || { x: (lm[33].x + lm[133].x) / 2, y: (lm[33].y  + lm[133].y)  / 2 };
-  const rightIris = lm[LM.rightIris] || { x: (lm[263].x+ lm[362].x) / 2, y: (lm[263].y + lm[362].y) / 2 };
+  const leftIris  = lm[LM.leftIris]  || {
+    // Fallback: average of outer + inner corner of subject's left eye
+    x: (lm[LM.leftEyeOuter].x  + lm[LM.leftEyeInner].x)  / 2,
+    y: (lm[LM.leftEyeOuter].y  + lm[LM.leftEyeInner].y)  / 2,
+  };
+  const rightIris = lm[LM.rightIris] || {
+    // Fallback: average of outer + inner corner of subject's right eye
+    x: (lm[LM.rightEyeOuter].x + lm[LM.rightEyeInner].x) / 2,
+    y: (lm[LM.rightEyeOuter].y + lm[LM.rightEyeInner].y) / 2,
+  };
   const nose      = lm[LM.noseTip];
   const forehead  = lm[LM.forehead];
   const chin      = lm[LM.chin];
@@ -551,8 +564,8 @@ function headPose(lm) {
 
 // ── Face centre (normalised 0-1) ───────────────────────────────────
 function faceCenter(lm) {
-  const li  = lm[LM.leftIris]  || lm[LM.leftEyeOut];
-  const ri  = lm[LM.rightIris] || lm[LM.rightEyeOut];
+  const li  = lm[LM.leftIris]  || lm[LM.leftEyeOuter];
+  const ri  = lm[LM.rightIris] || lm[LM.rightEyeOuter];
   const top = lm[LM.forehead];
   const bot = lm[LM.chin];
   return {
@@ -603,10 +616,11 @@ async function startCamera() {
 
     statusEl.textContent = '👁 Searching…';
 
-    // Feed frames into MediaPipe on every animation frame
+    // Feed frames into MediaPipe.  Cap at ~30 fps to avoid overloading the model.
+    const MP_FRAME_INTERVAL_MS = 33;   // ≈30 fps
     let lastSend = 0;
     async function sendFrame(ts) {
-      if (video.readyState >= 2 && ts - lastSend > 33) {  // cap ~30 fps to MP
+      if (video.readyState >= 2 && ts - lastSend > MP_FRAME_INTERVAL_MS) {
         lastSend = ts;
         await faceMesh.send({ image: video });
       }
